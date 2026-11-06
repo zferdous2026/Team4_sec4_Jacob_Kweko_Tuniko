@@ -1,0 +1,145 @@
+---
+title: "Graphtwo"
+author: "Jacob De Fonseka"
+date: "2026-11-04"
+output: html_document
+---
+
+```{r}
+library(WDI)
+library(tidyverse)
+
+wdi_gini <- WDI(
+  country = c("US", "CA", "GB", "FR", "BR"),
+  indicator = c("SI.POV.GINI", "SP.DYN.IMRT.IN"),
+  start = 2022,
+  end = 2022
+)
+
+dim(wdi_gini)
+```
+
+```{r}
+wdi_gini <- WDI(
+  country = "all",
+  indicator = c("SI.POV.GINI", "SP.DYN.IMRT.IN"),
+  start = 2022,
+  end = 2022
+)
+
+dim(wdi_gini)
+```
+
+```{r}
+clean_gini <- wdi_gini %>%
+  filter(
+    !is.na(SI.POV.GINI),
+    !is.na(SP.DYN.IMRT.IN)
+  )
+
+dim(clean_gini)
+```
+
+```{r}
+library(shiny)
+library(plotly)
+library(tidyverse)
+library(countrycode)
+
+graph_gini <- clean_gini %>%
+  rename(
+    Gini = SI.POV.GINI,
+    Infant_Mortality = SP.DYN.IMRT.IN
+  ) %>%
+  mutate(
+    Continent = countrycode(iso3c, "iso3c", "continent")
+  ) %>%
+  filter(!is.na(Continent))
+
+dim(graph_gini)
+```
+
+```{r}
+ui_gini <- fluidPage(
+
+  titlePanel("Income Inequality vs. Infant Mortality (2022)"),
+
+  sliderInput(
+    "gini_range",
+    "Select Gini Coefficient Range:",
+    min = floor(min(graph_gini$Gini)),
+    max = ceiling(max(graph_gini$Gini)),
+    value = c(
+      floor(min(graph_gini$Gini)),
+      ceiling(max(graph_gini$Gini))
+    )
+  ),
+
+  sliderInput(
+    "y_max",
+    "Select Maximum Infant Mortality Rate:",
+    min = 10,
+    max = ceiling(max(graph_gini$Infant_Mortality)) + 5,
+    value = ceiling(max(graph_gini$Infant_Mortality)) + 5,
+    step = 1
+  ),
+
+  plotlyOutput("gini_scatterplot")
+)
+```
+
+```{r}
+server_gini <- function(input, output) {
+
+  output$gini_scatterplot <- renderPlotly({
+
+    filtered_data <- graph_gini %>%
+      filter(
+        Gini >= input$gini_range[1],
+        Gini <= input$gini_range[2]
+      )
+
+    p <- ggplot(
+      filtered_data,
+      aes(
+        x = Gini,
+        y = Infant_Mortality,
+        color = Continent,
+        text = paste0(
+          "Country: ", country,
+          "<br>Continent: ", Continent,
+          "<br>Gini Index: ", round(Gini, 1),
+          "<br>Infant Mortality: ",
+          round(Infant_Mortality, 1),
+          " deaths per 1,000 live births"
+        )
+      )
+    ) +
+      geom_point(size = 2.5) +
+      geom_smooth(
+        aes(group = 1),
+        method = "lm",
+        se = FALSE,
+        color = "black"
+      ) +
+      labs(
+        title = "Gini Coefficient vs. Infant Mortality (2022)",
+        x = "Gini Index (0–100)",
+        y = "Infant Mortality (per 1,000 live births)",
+        color = "Continent"
+      )
+
+    ggplotly(p, tooltip = "text") %>%
+      layout(
+        yaxis = list(
+          range = c(0, input$y_max),
+          autorange = FALSE
+        )
+      )
+
+  })
+}
+
+shinyApp(ui_gini, server_gini)
+```
+
