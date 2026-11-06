@@ -1,0 +1,150 @@
+---
+title: "OECD X WORLD BANK"
+author: "Jacob De Fonseka"
+date: "2026-11-01"
+output: html_document
+---
+
+```{r}
+install.packages("WDI")
+library(WDI)
+```
+
+```{r}
+install.packages('WDI')
+```
+
+```{r}
+library(remotes)
+install_github('vincentarelbundock/WDI')
+```
+
+### Is foreign direct investment (FDI) associated with life expectancy across countries?
+
+```{r}
+library(WDI)
+library(tidyverse)
+
+wdi_variables <- WDIsearch()
+
+write_csv(wdi_variables, "WDI_variables.csv")
+```
+
+```{r}
+wdi_data <- WDI(
+  country = "all",
+  indicator = c("BX.KLT.DINV.WD.GD.ZS", "SP.DYN.LE00.IN"),
+  start = 2023,
+  end = 2023
+)
+
+head(wdi_data)
+names(wdi_data)
+dim(wdi_data)
+```
+
+```{r}
+clean_wdi <- wdi_data %>%
+  filter(!is.na(BX.KLT.DINV.WD.GD.ZS),
+         !is.na(SP.DYN.LE00.IN),
+         !is.na(iso3c))
+
+head(clean_wdi)
+dim(clean_wdi)
+```
+
+The following code used help from r-graph-gallery.com
+
+```{r}
+library(shiny)
+library(plotly)
+library(tidyverse)
+library(countrycode)
+
+# Give variables simpler names and add continents
+graph_data <- clean_wdi %>%
+  rename(
+    FDI = BX.KLT.DINV.WD.GD.ZS,
+    Life_Expectancy = SP.DYN.LE00.IN
+  ) %>%
+  mutate(
+    Continent = countrycode(iso3c, "iso3c", "continent")
+  ) %>%
+  filter(!is.na(Continent))
+
+# Create the interactive app
+ui <- fluidPage(
+
+  titlePanel("FDI vs. Life Expectancy (2023)"),
+
+  sliderInput(
+    "fdi_range",
+    "Select FDI Range (% of GDP):",
+    min = floor(min(graph_data$FDI)),
+    max = ceiling(max(graph_data$FDI)),
+    value = c(0, 10)
+  ),
+
+  plotlyOutput("scatterplot")
+)
+
+server <- function(input, output) {
+
+  output$scatterplot <- renderPlotly({
+
+    filtered_data <- graph_data %>%
+      filter(
+        FDI >= input$fdi_range[1],
+        FDI <= input$fdi_range[2]
+      )
+
+    p <- ggplot(
+      filtered_data,
+      aes(
+        x = FDI,
+        y = Life_Expectancy,
+        color = Continent,
+        text = paste0(
+          "Country: ", country,
+          "<br>Continent: ", Continent,
+          "<br>FDI: ", round(FDI, 2), "% of GDP",
+          "<br>Life Expectancy: ",
+          round(Life_Expectancy, 1), " years"
+        )
+      )
+    ) +
+      geom_point(size = 2.5) +
+      geom_smooth(
+        aes(group = 1),
+        method = "lm",
+        se = FALSE,
+        color = "black"
+      ) +
+      labs(
+        title = "Foreign Direct Investment vs. Life Expectancy (2023)",
+        x = "FDI Net Inflows (% of GDP)",
+        y = "Life Expectancy (Years)",
+        color = "Continent"
+      )
+
+    ggplotly(p, tooltip = "text")
+
+  })
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+library(countrycode)
+
+graph_data <- graph_data %>%
+  mutate(
+    Continent = countrycode(iso3c, "iso3c", "continent")
+  ) %>%
+  filter(!is.na(Continent))
+```
+
+The outcome: - Our 2023 scatterplot suggests a weak or nonexistent linear relationship between foreign direct investment and life expectancy across countries. Most observations are concentrated between 0% and 5% FDI relative to GDP, yet life expectancy varies considerably within this range. This suggests that FDI alone may not explain differences in life expectancy.
+
+
