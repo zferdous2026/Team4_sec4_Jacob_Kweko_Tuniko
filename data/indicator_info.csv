@@ -1,0 +1,21 @@
+variable,label,unit,wdi_code,theme,log_scale,forecastable,higher_is_better,first_year,last_year,n_countries,coverage_2010s,coverage_full
+gini_index,Gini index,0-100,SI.POV.GINI,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
+pov_headcount,Poverty headcount ($3.00/day),% of population,SI.POV.DDAY,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
+life_expect,Life expectancy,years,SP.DYN.LE00.IN,Health,FALSE,TRUE,TRUE,1960,2024,217,100,98.2
+infant_mort,Infant mortality,"per 1,000 live births",SP.DYN.IMRT.IN,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.6
+under5_mort,Under-5 mortality,"per 1,000 live births",SH.DYN.MORT,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.8
+health_spend,Health spending,% of GDP,SH.XPD.CHEX.GD.ZS,Health,FALSE,FALSE,NA,2000,2024,193,87.9,31.9
+gross_prim_enrol,Primary enrollment (gross),% of age group,SE.PRM.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,209,76.9,52.3
+gross_sec_enrol,Secondary enrollment (gross),% of age group,SE.SEC.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,208,67.6,43.8
+prim_comp_rate,Primary completion rate,% of age group,SE.PRM.CMPT.ZS,Education,FALSE,FALSE,TRUE,1970,2025,198,63.9,35.3
+edc_spending,Education spending,% of GDP,SE.XPD.TOTL.GD.ZS,Education,FALSE,FALSE,NA,1970,2025,203,72.5,35.8
+adlt_liter,Adult literacy rate,% of people 15+,SE.ADT.LITR.ZS,Education,FALSE,FALSE,TRUE,1970,2024,170,21.4,7.8
+gdp_per_capita,GDP per capita,constant 2015 US$,NY.GDP.PCAP.KD,Economy,TRUE,TRUE,TRUE,1960,2025,213,96.6,80.5
+gdp_growth,GDP growth,annual %,NY.GDP.MKTP.KD.ZG,Economy,FALSE,FALSE,TRUE,1961,2025,214,96.8,79.7
+tax_revenue,Tax revenue,% of GDP,GC.TAX.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,32.9
+gov_rev_nogrant,Government revenue (excl. grants),% of GDP,GC.REV.XGRT.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,162,63.6,32.7
+gov_expense,Government expense,% of GDP,GC.XPN.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,31.1
+aid_received_gni,Aid received (net ODA),% of GNI,DT.ODA.ODAT.GN.ZS,Economy,FALSE,FALSE,NA,1960,2023,162,63.5,54.8
+fdi,"FDI, net inflows",% of GDP,BX.KLT.DINV.WD.GD.ZS,Economy,FALSE,FALSE,NA,1970,2025,203,90.2,65.8
+total_pop,Population,people,SP.POP.TOTL,Population,TRUE,TRUE,NA,1960,2025,217,100,99.8
+urban_pop,Urban population,% of total population,SP.URB.TOTL.IN.ZS,Population,FALSE,TRUE,NA,1960,2025,217,100,100
