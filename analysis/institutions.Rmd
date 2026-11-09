@@ -1,0 +1,80 @@
+---
+title: "6. Institutions"
+author: "TBD"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# Run everything from the project root, so data/ paths work
+root <- getwd()
+while (!file.exists(file.path(root, "app.R")) && dirname(root) != root) root <- dirname(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+```{r load, message = FALSE}
+source("analysis/_setup.R")
+d <- decade("2010-2019")   # one row per country, 2010s averages
+```
+
+## How to use this notebook
+
+This is where you work out the questions for the **6. Institutions** page (`R/page_institutions.R`) before they go on the website.
+
+1. **Pick a question** for each figure. Ideas: `docs/question_bank.md`. Variables: `docs/variables.md`.
+2. **Work it out** in the figure's chunk below: numbers first, then a quick chart.
+3. **Write the finding** under **Title** (one sentence that states the result) and **Caption** (2-3 sentences: what the chart shows, the key number, what it means). Say "is linked to", never "causes".
+4. **Copy it into the page file**: the `title`, the `caption`, and your ggplot code as `plot = function(d) { ... }` (see `R/page_story.R`).
+
+**Shared functions** (from `analysis/_setup.R`):
+
+| Function | Gives |
+|---|---|
+| `summarise_question(data, "x", "y")` | Spearman r, r at similar income levels (beyond GDP), r within each income group |
+| `spearman(data, "x", "y")` | n, r, p-value |
+| `beyond(data, "x", "y")` | r after removing the effect of GDP per capita |
+| `by_income(data, "x", "y")` | r within each income group |
+| `quick_scatter(data, "x", "y", log_x = FALSE, log_y = FALSE)` | a quick exploratory scatter, to look at the data (draw the website's chart yourself with ggplot) |
+
+Add, remove or rename the Q sections freely.
+
+## Q1: TODO (your question)
+
+**Variables:** TODO
+
+```{r q1}
+# Example (replace with your own variables):
+# summarise_question(d, "gini_index", "infant_mort")
+# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+```
+
+**Title:** TODO (the finding in one sentence)
+
+**Caption:** TODO
+
+## Q2: TODO (your question)
+
+**Variables:** TODO
+
+```{r q2}
+# Example (replace with your own variables):
+# summarise_question(d, "gini_index", "infant_mort")
+# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+```
+
+**Title:** TODO (the finding in one sentence)
+
+**Caption:** TODO
+
+## Q3: TODO (your question)
+
+**Variables:** TODO
+
+```{r q3}
+# Example (replace with your own variables):
+# summarise_question(d, "gini_index", "infant_mort")
+# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+```
+
+**Title:** TODO (the finding in one sentence)
+
+**Caption:** TODO

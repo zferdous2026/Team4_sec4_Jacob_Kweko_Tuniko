@@ -1,0 +1,125 @@
+---
+title: "2. Inequality"
+author: "Jacob"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# Run everything from the project root, so data/ paths work
+root <- getwd()
+while (!file.exists(file.path(root, "app.R")) && dirname(root) != root) root <- dirname(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+```{r load, message = FALSE}
+source("analysis/_setup.R")
+d <- decade("2010-2019")   # one row per country, 2010s averages
+```
+
+## How to use this notebook
+
+This is where you work out the questions for the **2. Inequality** page (`R/page_inequality.R`) before they go on the website.
+
+1. **Pick a question** for each figure. Ideas: `docs/question_bank.md`. Variables: `docs/variables.md`.
+2. **Work it out** in the figure's chunk below: numbers first, then a quick chart.
+3. **Write the finding** under **Title** (one sentence that states the result) and **Caption** (2-3 sentences: what the chart shows, the key number, what it means). Say "is linked to", never "causes".
+4. **Copy it into the page file**: the `title`, the `caption`, and your ggplot code as `plot = function(d) { ... }` (see `R/page_story.R`).
+
+**Shared functions** (from `analysis/_setup.R`):
+
+| Function | Gives |
+|---|---|
+| `summarise_question(data, "x", "y")` | Spearman r, r at similar income levels (beyond GDP), r within each income group |
+| `spearman(data, "x", "y")` | n, r, p-value |
+| `beyond(data, "x", "y")` | r after removing the effect of GDP per capita |
+| `by_income(data, "x", "y")` | r within each income group |
+| `quick_scatter(data, "x", "y", log_x = FALSE, log_y = FALSE)` | a quick exploratory scatter, to look at the data (draw the website's chart yourself with ggplot) |
+
+Add, remove or rename the Q sections freely.
+
+Q1 and Q2 are Jacob's (from `FINALginivsinfantmortality.Rmd`), filled in as a **worked example** of the process. Q3 is blank.
+
+## Jacob's chart
+
+The same code as `gini_chart()` in `R/page_inequality.R`: written here first, then pasted into the page file, where each figure uses it with `plot = function(d) gini_chart(d)`. **If you change the chart, change it in both places.**
+
+In the notebook it's a normal ggplot image; wrap it in `plotly::ggplotly(..., tooltip = "text")` to see the hover text as on the website.
+
+```{r jacob-chart}
+income_colours <- c("Low income" = "#86b6ef", "Lower middle income" = "#3987e5",
+                    "Upper middle income" = "#1c5cab", "High income" = "#0d366b")
+
+gini_chart <- function(d, split = FALSE) {
+  d <- d %>%
+    filter(!is.na(swiid_gini), !is.na(infant_mort), !is.na(income)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", income,
+                        "<br>Gini index (SWIID): ", round(swiid_gini, 1),
+                        "<br>Infant mortality: ", round(infant_mort, 1),
+                        " per 1,000 live births"))
+
+  p <- ggplot(d, aes(x = swiid_gini, y = infant_mort)) +
+    # One trend line through all the points. Colour is set only on the
+    # points, so the line isn't split by income group.
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    # `text` is the hover text. Only plotly reads it, so ggplot warns
+    # "Ignoring unknown aesthetics"; the warning is harmless.
+    suppressWarnings(geom_point(aes(colour = income, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = income_colours, name = NULL) +
+    scale_y_log10() +
+    labs(x = "Gini index (SWIID, disposable income, 0-100)",
+         y = "Infant mortality (log scale)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+
+  if (split) {
+    p <- p + facet_wrap(~ income, ncol = 2) + theme(legend.position = "none")
+  }
+  p
+}
+```
+
+## Q1: Do more unequal countries have higher infant mortality?
+
+**Variables:** `swiid_gini` (SWIID Gini, disposable income, 0-100) and `infant_mort` (deaths per 1,000 live births, log scale), 2010s averages. Jacob's original used the World Bank Gini (`gini_index`); the last line checks that it gives the same pattern.
+
+```{r q1}
+summarise_question(d, "swiid_gini", "infant_mort")
+gini_chart(d)
+
+# Robustness check: World Bank Gini
+spearman(d, "gini_index", "infant_mort")
+```
+
+**Title:** More unequal countries have higher infant mortality
+
+**Caption:** Preliminary: r = 0.60 across 178 countries, and 0.50 at similar income levels. With the World Bank Gini the pattern is the same (r = 0.45, 160 countries). TODO
+
+## Q2: Is the link the same at every income level?
+
+**Variables:** the same, split by World Bank income group.
+
+```{r q2, fig.height = 7}
+by_income(d, "swiid_gini", "infant_mort")
+gini_chart(d, split = TRUE)
+```
+
+**Title:** The link is strongest among richer countries
+
+**Caption:** Preliminary: r = 0.66 in high-income, 0.44 upper-middle, 0.32 lower-middle and about 0 in low-income countries. TODO
+
+## Q3: TODO (your question)
+
+**Variables:** TODO
+
+```{r q3}
+# Example (replace with your own variables):
+# summarise_question(d, "gini_index", "infant_mort")
+# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+```
+
+**Title:** TODO (the finding in one sentence)
+
+**Caption:** TODO
