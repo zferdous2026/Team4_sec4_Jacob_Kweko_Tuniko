@@ -66,3 +66,28 @@ datasets <- c(
 for (d in datasets) {
   write.csv(get(d), file.path("data-raw", paste0(d, ".csv")), row.names = FALSE)
 }
+
+```{r}
+library(WDI)
+library(tidyverse)
+
+# Download Gini coefficient data from World Bank
+gini_data <- WDI(
+  country = "all",
+  indicator = "SI.POV.GINI",
+  start = 2010,
+  end = 2024
+)
+
+# Save dataset as CSV
+write_csv(gini_data, "gini_world_data.csv")
+
+# Check the data
+head(gini_data)
+dim(gini_data)
+```
+
+
+
+
+
