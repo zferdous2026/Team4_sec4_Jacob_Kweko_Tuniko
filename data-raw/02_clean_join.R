@@ -1,8 +1,11 @@
 # 02_clean_join.R
-# Purpose: Combine every raw WDI indicator CSV into one clean country-year dataset
-# Input:   data-raw/<indicator>.csv (written by 01_download_wdi.R)
+# Purpose: Combine every raw indicator into one clean country-year dataset
+# Input:   data-raw/<indicator>.csv           (written by 01_download_wdi.R)
+#          data-raw/external/clean/<source>.csv (written by 01b_external_data.R)
 # Output:  data/wdi_clean.csv and data/wdi_clean.rds
-# Run from the project root, after 01_download_wdi.R.
+#          (still called "wdi_clean" so nothing else breaks, but it now also
+#          contains the SWIID, World Happiness Report and V-Dem columns)
+# Run from the project root, after 01_download_wdi.R and 01b_external_data.R.
 
 library(dplyr)
 library(readr)
@@ -38,11 +41,23 @@ wdi_clean <- indicator_data %>%
            longitude, latitude, year) %>%
   arrange(country, year)
 
+# Add the external datasets (SWIID, World Happiness Report, V-Dem).
+# left_join keeps only our 217 World Bank countries and their years; external
+# rows for other places (e.g. historical countries) are dropped.
+external_files <- list.files("data-raw/external/clean", pattern = "\\.csv$", full.names = TRUE)
+for (path in external_files) {
+  external <- read_csv(path, show_col_types = FALSE)
+  stopifnot(!anyDuplicated(external[c("iso3c", "year")]))
+  matched <- n_distinct(intersect(external$iso3c, wdi_clean$iso3c))
+  message(basename(path), ": matched ", matched, " countries")
+  wdi_clean <- left_join(wdi_clean, external, by = c("iso3c", "year"))
+}
+
 # Basic checks
 stopifnot(!anyDuplicated(wdi_clean[c("iso3c", "year")]))
 message(n_distinct(wdi_clean$iso3c), " countries, ",
         min(wdi_clean$year), "-", max(wdi_clean$year), ", ",
-        length(indicators), " indicators")
+        ncol(wdi_clean) - 10, " indicators")
 
 # Save: CSV for sharing, RDS keeps column types for R
 dir.create("data", showWarnings = FALSE)
