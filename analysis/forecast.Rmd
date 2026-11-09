@@ -1,0 +1,234 @@
+---
+title: "Forecast & Models"
+author: "TBD"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# Run everything from the project root, so data/ paths work
+root <- getwd()
+while (!file.exists(file.path(root, "app.R")) && dirname(root) != root) root <- dirname(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+## What this notebook is for
+
+This notebook produces everything the **Forecast & Models** page shows. It is the project's technical showcase: a ladder of models, from a straight-line trend to machine learning and a Neural ODE, all tested the same honest way.
+
+| Figure | Question | Section |
+|---|---|---|
+| 9.1 | Will the gap in child mortality close by 2035? | 1 |
+| 9.2 | One country's future under different models | 2 |
+| 9.3 | Which model predicts best? (back-test) | 2-4 |
+| 9.4 | What predicts which countries improve fastest? | 5 |
+
+**Outcome:** under-5 mortality (log scale), because it is well covered and falls steadily.
+
+**The back-test (how every model is judged):** train only on data up to **2014**, predict **2019**, compare with what actually happened. 2019 avoids the COVID shock. Report the error (MAE, in deaths per 1,000) for **every** model, including the losers: simple models often win on short annual series, and saying so is a strong result.
+
+**Rules:** don't train models inside the app. Save the results at the end of this notebook (`data/forecast_results.rds`); the app only reads them.
+
+### One-time installs
+
+```r
+install.packages(c("fable", "tsibble", "fabletools", "feasts", "urca", "ranger"))   # levels 0-2 (ARIMA needs feasts + urca)
+# Level 3 (Neural ODE, optional): R torch downloads a large library on first use
+install.packages("torch"); torch::install_torch()
+```
+
+```{r load, message = FALSE}
+source("analysis/_setup.R")
+library(tsibble)
+library(fable)
+library(ranger)
+
+wdi          <- readRDS("data/wdi_clean.rds")
+group_trends <- readRDS("data/group_trends.rds")
+```
+
+## 1. Will the gap close by 2035? (Figure 9.1)
+
+Median under-5 mortality for each income group, 1990 onwards (years where at least half the group's countries reported). Models are fitted on the **log** scale so forecasts can't go below zero and fall proportionally.
+
+```{r groups}
+groups <- group_trends %>%
+  filter(group_type == "Income group", variable == "under5_mort",
+         pct_reporting >= 50, year >= 1990) %>%
+  transmute(group, year = as.integer(year), u5 = median) %>%
+  as_tsibble(key = group, index = year)
+
+# Back-test on the groups: train to 2014, forecast 2015-2019
+group_fit <- groups %>%
+  filter(year <= 2014) %>%
+  model(drift = RW(log(u5) ~ drift()),
+        ets   = ETS(log(u5)),
+        arima = ARIMA(log(u5)))
+group_fit %>% forecast(h = 5) %>% accuracy(groups) %>% select(group, .model, MAE, MAPE)
+```
+
+```{r groups-2035}
+# Final forecast: fit on all years, forecast to 2035 with 80% / 95% bands.
+# Use the model that did best in the back-test above (ETS is a placeholder).
+last_year <- max(groups$year)
+group_forecast <- groups %>%
+  model(ets = ETS(log(u5))) %>%
+  forecast(h = 2035 - last_year) %>%
+  hilo(level = c(80, 95)) %>%
+  unpack_hilo(c("80%", "95%")) %>%
+  as_tibble() %>%
+  select(group, year, model = .model, mean = .mean,
+         lo80 = `80%_lower`, hi80 = `80%_upper`, lo95 = `95%_lower`, hi95 = `95%_upper`)
+
+group_forecast %>% filter(year == 2035)
+```
+
+**Finding (9.1):** Preliminary (ETS): in 2035 low-income countries are at about 54 deaths per 1,000 (95% band 31-86) vs about 4 for high-income countries: the gap is still roughly 13 times. TODO
+
+## 2. Single-country models: drift, ETS, ARIMA (Figures 9.2, 9.3)
+
+One model per country, for countries with complete data 1990-2019.
+
+```{r countries}
+countries <- wdi %>%
+  filter(between(year, 1990, 2019), !is.na(under5_mort)) %>%
+  transmute(iso3c, country, year = as.integer(year), u5 = under5_mort)
+complete <- countries %>% count(iso3c) %>% filter(n == 30) %>% pull(iso3c)
+countries <- countries %>% filter(iso3c %in% complete) %>% as_tsibble(key = c(iso3c, country), index = year)
+cat(length(complete), "countries with complete 1990-2019 data\n")
+
+# Back-test: train to 2014, predict 2019 (takes a minute: ARIMA per country)
+country_fit <- countries %>%
+  filter(year <= 2014) %>%
+  model(drift = RW(log(u5) ~ drift()),
+        ets   = ETS(log(u5)),
+        arima = ARIMA(log(u5)))
+
+pred_ts <- country_fit %>%
+  forecast(h = 5) %>%
+  as_tibble() %>%
+  filter(year == 2019) %>%
+  transmute(iso3c, model = .model, pred = .mean)
+```
+
+## 3. One global machine-learning model (Figure 9.3)
+
+Instead of one model per country, a **single random forest learns from all countries at once**. It predicts how much child mortality will change over the next 5 years from where a country is now and its recent trend, plus income, inequality and institutions. Single-country models can't use that information, which is why a global model can win.
+
+```{r global-ml}
+features <- c("log_u5", "trend5", "log_gdp", "swiid_gini", "health_equality")
+
+panel <- wdi %>%
+  arrange(iso3c, year) %>%
+  group_by(iso3c) %>%
+  mutate(log_u5  = log(under5_mort),
+         trend5  = log_u5 - lag(log_u5, 5),          # change over the last 5 years
+         log_gdp = log(gdp_per_capita),
+         target  = lead(log_u5, 5) - log_u5) %>%     # change over the NEXT 5 years
+  ungroup()
+
+# Train only on targets that end by 2014 (no peeking at the test years)
+train <- panel %>% filter(between(year, 1995, 2009)) %>% filter(if_all(all_of(c("target", features)), ~ !is.na(.x)))
+test  <- panel %>% filter(year == 2014, iso3c %in% complete) %>% filter(if_all(all_of(features), ~ !is.na(.x)))
+
+global_rf <- ranger(reformulate(features, "target"), data = train,
+                    num.trees = 500, importance = "permutation", seed = 42)
+global_rf
+
+pred_rf <- test %>% transmute(iso3c, model = "global_rf",
+                              pred = exp(log_u5 + predict(global_rf, test)$predictions))
+```
+
+## 4. Neural ODE (stretch goal, Figure 9.3)
+
+**Idea:** instead of predicting the next value directly, learn the **rate of change**, dy/dt = f(y, x), where f is a small neural network shared by all countries, y is log child mortality and x the covariates (income, inequality, health equality). Forecasting = integrating f forward in time with an ODE solver. It handles irregular data naturally and is the most technically ambitious model here.
+
+**Be honest about it:** ~200 countries × ~25 years is little data for a neural network. Train it **global** (all countries together), keep the network tiny, and compare it with the others in the same back-test. If it doesn't beat the random forest, report that.
+
+The chunk below is an **untested outline** in R `torch` (`eval = FALSE`). Python's `torchdiffeq` is the more mature alternative if you prefer Python.
+
+```{r neural-ode, eval = FALSE}
+library(torch)
+
+# f(y, x): the learned rate of change of log child mortality
+rate_net <- nn_module(
+  initialize = function(n_inputs) {
+    self$net <- nn_sequential(nn_linear(n_inputs, 16), nn_tanh(), nn_linear(16, 1))
+  },
+  forward = function(y, x) self$net(torch_cat(list(y, x), dim = 2))
+)
+
+# One Runge-Kutta (RK4) step of size dt = 1 year: integrates dy/dt = f(y, x)
+rk4_step <- function(f, y, x, dt = 1) {
+  k1 <- f(y, x)
+  k2 <- f(y + dt / 2 * k1, x)
+  k3 <- f(y + dt / 2 * k2, x)
+  k4 <- f(y + dt * k3, x)
+  y + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+}
+
+# Training sketch:
+# 1. Build tensors: y0 = log_u5 in a start year, x = covariates (scaled),
+#    y_true = log_u5 for the following years (all countries, years <= 2014).
+# 2. Roll forward: y <- rk4_step(model, y, x) for each year, collect predictions.
+# 3. loss <- nnf_mse_loss(y_pred, y_true); optimizer <- optim_adam(model$parameters, lr = 0.01)
+# 4. Repeat for a few hundred epochs; watch the loss.
+# 5. Back-test: start from 2014, roll 5 steps to 2019, compare with actual.
+#
+# pred_node <- tibble(iso3c = ..., model = "neural_ode", pred = exp(y_2019))
+```
+
+## Back-test comparison (Figure 9.3)
+
+```{r backtest}
+actual_2019 <- countries %>% as_tibble() %>% filter(year == 2019) %>% select(iso3c, actual = u5)
+
+all_preds <- bind_rows(pred_ts, pred_rf)   # add pred_node here if you build it
+
+backtest <- all_preds %>%
+  inner_join(actual_2019, by = "iso3c") %>%
+  group_by(iso3c) %>% filter(n() == n_distinct(all_preds$model)) %>% ungroup() %>%   # same countries for every model
+  group_by(model) %>%
+  summarise(countries = n(),
+            MAE  = mean(abs(pred - actual)),
+            MAPE = mean(abs(pred - actual) / actual) * 100) %>%
+  arrange(MAE)
+backtest
+```
+
+**Finding (9.3):** Preliminary (158 countries): ETS is best (MAE 2.30 deaths per 1,000), then ARIMA (2.74) and drift (2.80); the global random forest is worst (3.26). Ideas to improve the global model: more lags, predicting 1 year ahead and rolling forward, tuning `mtry` / `min.node.size`, or XGBoost. TODO
+## 5. What predicts which countries improve fastest? (Figure 9.4)
+
+A random forest predicts each country's **% fall in child mortality, 2000s to 2010s**, from its situation in the **2000s**. Permutation importance shows which inputs the model relies on most. The out-of-bag R² is an honest estimate of how well it predicts countries it wasn't trained on.
+
+```{r importance}
+predictors <- c("under5_mort_2000s", "gdp_per_capita_2000s", "swiid_gini_2000s", "health_spend_2000s",
+                "edc_spending_2000s", "health_equality_2000s", "hiv_prev_2000s", "aid_received_gni_2000s")
+
+improve <- country_change %>%
+  filter(if_all(all_of(c("pct_under5_mort", predictors)), ~ !is.na(.x)))
+cat(nrow(improve), "countries with complete data\n")
+
+improve_rf <- ranger(reformulate(predictors, "pct_under5_mort"), data = improve,
+                     num.trees = 1000, importance = "permutation", seed = 42)
+cat("Out-of-bag R²:", round(improve_rf$r.squared, 2), "\n")
+
+importance <- tibble(predictor = names(improve_rf$variable.importance),
+                     importance = unname(improve_rf$variable.importance)) %>%
+  arrange(desc(importance))
+importance
+```
+
+**Finding (9.4):** Preliminary: the model is weak (out-of-bag R² = 0.08, 94 countries); starting mortality, aid and income matter most and inequality contributes nothing, consistent with the Over Time result. To improve: drop sparse predictors (HIV, aid) to keep more countries, or predict the absolute change instead of the %. A weak model is itself a finding: improvement is hard to predict from these factors. TODO
+
+## Save results for the app
+
+```{r save}
+saveRDS(
+  list(group_forecast = group_forecast,        # Figure 9.1
+       backtest       = backtest,              # Figure 9.3
+       importance     = importance,            # Figure 9.4
+       importance_r2  = improve_rf$r.squared),
+  "data/forecast_results.rds"
+)
+# TODO (Figure 9.2): also save per-country forecasts to 2035 for each model.
+```

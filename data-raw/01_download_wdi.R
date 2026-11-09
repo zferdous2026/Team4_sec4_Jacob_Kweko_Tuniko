@@ -1,68 +1,34 @@
 # 01_download_wdi.R
+# =============================================================================
 # Purpose: Download World Bank WDI indicators and save each as a raw CSV
-# Output:  data-raw/<indicator>.csv (one file per indicator)
-# Run from the project root. Re-run to refresh the data.
+# Output:  data-raw/<name>.csv (one file per indicator; the file name is also
+#          the column name used everywhere else in the project)
+# Run from the project root. Pipeline:
+#   01_download_wdi.R -> 01b_external_data.R -> 02_clean_join.R ->
+#   03_summaries.R -> 04_changes_scores.R
+#
+# By default only indicators WITHOUT a CSV yet are downloaded, so re-running
+# the script doesn't silently change data the team is already using.
+# Set refresh <- TRUE to re-download everything (e.g. once, before submitting).
+# =============================================================================
 
-# Install and call WDI package
 if (!requireNamespace("WDI", quietly = TRUE)) install.packages("WDI")
-library("WDI")
+library(WDI)
 
+refresh <- FALSE
 
-# Pull datasets
-
-# Contols and scaling
-
-gdp_per_capita <- WDI(extra = TRUE, indicator = c(gdp_per_capita = "NY.GDP.PCAP.KD"))
-total_pop      <- WDI(extra = TRUE, indicator = c(total_pop      = "SP.POP.TOTL"))
-gdp_growth     <- WDI(extra = TRUE, indicator = c(gdp_growth     = "NY.GDP.MKTP.KD.ZG"))
-tax_revenue    <- WDI(extra = TRUE, indicator = c(tax_revenue    = "GC.TAX.TOTL.GD.ZS"))
-urban_pop      <- WDI(extra = TRUE, indicator = c(urban_pop      = "SP.URB.TOTL.IN.ZS"))
-
-# Education
-
-gross_prim_enrol <- WDI(extra = TRUE, indicator = c(gross_prim_enrol = "SE.PRM.ENRR"))
-gross_sec_enrol  <- WDI(extra = TRUE, indicator = c(gross_sec_enrol  = "SE.SEC.ENRR"))
-prim_comp_rate   <- WDI(extra = TRUE, indicator = c(prim_comp_rate   = "SE.PRM.CMPT.ZS"))
-edc_spending     <- WDI(extra = TRUE, indicator = c(edc_spending     = "SE.XPD.TOTL.GD.ZS"))
-adlt_liter       <- WDI(extra = TRUE, indicator = c(adlt_liter       = "SE.ADT.LITR.ZS"))
-
-# Health
-
-life_expect  <- WDI(extra = TRUE, indicator = c(life_expect  = "SP.DYN.LE00.IN"))
-infant_mort  <- WDI(extra = TRUE, indicator = c(infant_mort  = "SP.DYN.IMRT.IN"))
-under5_mort  <- WDI(extra = TRUE, indicator = c(under5_mort  = "SH.DYN.MORT"))
-health_spend <- WDI(extra = TRUE, indicator = c(health_spend ="SH.XPD.CHEX.GD.ZS"))
-
-# Fiscal and governance
-
-gov_rev_nogrant  <- WDI(extra = TRUE, indicator = c(gov_rev_nogrant  = "GC.REV.XGRT.GD.ZS"))
-gov_expense      <- WDI(extra = TRUE, indicator = c(gov_expense      = "GC.XPN.TOTL.GD.ZS"))
-aid_received_gni <- WDI(extra = TRUE, indicator = c(aid_received_gni = "DT.ODA.ODAT.GN.ZS"))
-fdi              <- WDI(extra = TRUE, indicator = c(fdi              = "BX.KLT.DINV.WD.GD.ZS"))
-
-
-# Inequality and poverty
-
-gini_index    <- WDI(extra = TRUE, indicator = c(gini_index    = "SI.POV.GINI"))
-pov_headcount <- WDI(extra = TRUE, indicator = c(pov_headcount = "SI.POV.DDAY"))
-
-
-
-
-# Write raw data into csv files (one file per dataset, named after the object)
-datasets <- c(
+# Name = column name in our data, value = World Bank indicator code.
+# To add an indicator: add a line here, run this script and 02-04, then add a
+# row for it in the dictionary in 03_summaries.R.
+indicators <- c(
   # Controls and scaling
-  "gdp_per_capita", "total_pop", "gdp_growth", "tax_revenue", "urban_pop",
-  # Education
-  "gross_prim_enrol", "gross_sec_enrol", "prim_comp_rate", "edc_spending", "adlt_liter",
-  # Health
-  "life_expect", "infant_mort", "under5_mort", "health_spend",
-  # Fiscal and governance
-  "gov_rev_nogrant", "gov_expense", "aid_received_gni", "fdi",
-  # Inequality and poverty
-  "gini_index", "pov_headcount"
-)
+  gdp_per_capita   = "NY.GDP.PCAP.KD",
+  total_pop        = "SP.POP.TOTL",
+  gdp_growth       = "NY.GDP.MKTP.KD.ZG",
+  tax_revenue      = "GC.TAX.TOTL.GD.ZS",
+  urban_pop        = "SP.URB.TOTL.IN.ZS",
 
+<<<<<<< HEAD
 for (d in datasets) {
   write.csv(get(d), file.path("data-raw", paste0(d, ".csv")), row.names = FALSE)
 }
@@ -91,3 +57,44 @@ dim(gini_data)
 
 
 
+=======
+  # Education
+  gross_prim_enrol = "SE.PRM.ENRR",
+  gross_sec_enrol  = "SE.SEC.ENRR",
+  prim_comp_rate   = "SE.PRM.CMPT.ZS",
+  edc_spending     = "SE.XPD.TOTL.GD.ZS",
+  adlt_liter       = "SE.ADT.LITR.ZS",
+  test_scores      = "HD.HCI.HLOS",         # NEW: harmonized learning outcomes (2010-2020)
+
+  # Health
+  life_expect      = "SP.DYN.LE00.IN",
+  infant_mort      = "SP.DYN.IMRT.IN",
+  under5_mort      = "SH.DYN.MORT",
+  health_spend     = "SH.XPD.CHEX.GD.ZS",
+  oop_health       = "SH.XPD.OOPC.CH.ZS",   # NEW: out-of-pocket share of health spending
+  hiv_prev         = "SH.DYN.AIDS.ZS",      # NEW: HIV prevalence, ages 15-49
+
+  # Fiscal, governance and foreign money
+  gov_rev_nogrant  = "GC.REV.XGRT.GD.ZS",
+  gov_expense      = "GC.XPN.TOTL.GD.ZS",
+  aid_received_gni = "DT.ODA.ODAT.GN.ZS",
+  fdi              = "BX.KLT.DINV.WD.GD.ZS",
+  resource_rents   = "NY.GDP.TOTL.RT.ZS",   # NEW: natural resource rents (% of GDP)
+
+  # Inequality and poverty
+  gini_index       = "SI.POV.GINI",
+  pov_headcount    = "SI.POV.DDAY"
+)
+# Not available from the current World Bank API (tested Nov 2026), so not used:
+#   SH.UHC.SRVS.CV.XD (UHC service coverage) -> use V-Dem health equality instead
+#   GE.EST (government effectiveness)        -> use V-Dem corruption index instead
+
+for (name in names(indicators)) {
+  path <- file.path("data-raw", paste0(name, ".csv"))
+  if (file.exists(path) && !refresh) next
+
+  message("Downloading ", name, " (", indicators[[name]], ")")
+  data <- WDI(indicator = setNames(indicators[[name]], name), extra = TRUE)
+  write.csv(data, path, row.names = FALSE)
+}
+>>>>>>> 187ad9ec839d244135616691481e4be016db8026

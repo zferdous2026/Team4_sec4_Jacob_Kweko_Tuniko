@@ -1,0 +1,78 @@
+---
+title: "Beyond Wealth: What Is Linked to Better Health, Education and Wellbeing?"
+author: "Team 4: Jacob, Kweko, Tuniko"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# Run everything from the project root, so data/ paths work
+root <- getwd()
+while (!file.exists(file.path(root, "app.R")) && dirname(root) != root) root <- dirname(root)
+knitr::opts_knit$set(root.dir = root)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r load}
+source("analysis/_setup.R")
+```
+
+# 1. Introduction
+
+TODO: The central question (from the Home page) and why it matters. Half a page.
+
+# 2. What's already known
+
+TODO: One paragraph each. **Check every citation against the original paper.**
+
+- Wealth and health: the Preston curve (Preston, 1975)
+- Inequality and health across countries (Wilkinson & Pickett, 2009) and the critique (Deaton, 2003)
+- Inequality and health within countries over time: Avendano (2012); Leigh (& Jencks?)
+- Countries that beat their income: Good Health at Low Cost (1985) and follow-ups; "punching above their weight" (2020)
+
+# 3. What we add
+
+TODO: Global sample (~175 countries, not just rich ones); 2000s → 2010s; inequality, spending, foreign money and institutions compared side by side; four data sources; an interactive app.
+
+# 4. Data and methods
+
+TODO: Sources (World Bank WDI, SWIID, World Happiness Report, V-Dem); decade averages; Spearman correlation; "beyond GDP" partial correlation; change analysis; expected-vs-actual scores. Copy from the Data & Methods page.
+
+# 5. Results: what is linked to outcomes beyond wealth?
+
+## 5.1 Wealth (baseline)
+TODO, from `analysis/wealth.Rmd`
+
+## 5.2 Inequality
+TODO, from `analysis/inequality.Rmd`
+
+## 5.3 Public spending
+TODO, from `analysis/spending.Rmd`
+
+## 5.4 Foreign money
+TODO, from `analysis/foreign.Rmd`
+
+## 5.5 Wellbeing
+TODO, from `analysis/wellbeing.Rmd`
+
+## 5.6 Institutions
+TODO, from `analysis/institutions.Rmd`
+
+# 6. Over time
+
+TODO, from `analysis/over_time.Rmd`. The key comparison: cross-country r vs over-time r.
+
+# 7. Beating expectations
+
+TODO, from `analysis/expectations.Rmd`
+
+# 8. Forecasts and model comparison
+
+TODO, from `analysis/forecast.Rmd`: the 2035 forecast, the back-test (drift, ETS, ARIMA, global random forest, Neural ODE) and what predicts improvement. Explain each model in plain words and be honest about which ones lost.
+
+# 9. Conclusion
+
+TODO: The answer in one paragraph, limitations, next steps.
+
+# References
+
+TODO

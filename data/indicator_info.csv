@@ -1,21 +1,32 @@
-variable,label,unit,wdi_code,theme,log_scale,forecastable,higher_is_better,first_year,last_year,n_countries,coverage_2010s,coverage_full
-gini_index,Gini index,0-100,SI.POV.GINI,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
-pov_headcount,Poverty headcount ($3.00/day),% of population,SI.POV.DDAY,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
-life_expect,Life expectancy,years,SP.DYN.LE00.IN,Health,FALSE,TRUE,TRUE,1960,2024,217,100,98.2
-infant_mort,Infant mortality,"per 1,000 live births",SP.DYN.IMRT.IN,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.6
-under5_mort,Under-5 mortality,"per 1,000 live births",SH.DYN.MORT,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.8
-health_spend,Health spending,% of GDP,SH.XPD.CHEX.GD.ZS,Health,FALSE,FALSE,NA,2000,2024,193,87.9,31.9
-gross_prim_enrol,Primary enrollment (gross),% of age group,SE.PRM.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,209,76.9,52.3
-gross_sec_enrol,Secondary enrollment (gross),% of age group,SE.SEC.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,208,67.6,43.8
-prim_comp_rate,Primary completion rate,% of age group,SE.PRM.CMPT.ZS,Education,FALSE,FALSE,TRUE,1970,2025,198,63.9,35.3
-edc_spending,Education spending,% of GDP,SE.XPD.TOTL.GD.ZS,Education,FALSE,FALSE,NA,1970,2025,203,72.5,35.8
-adlt_liter,Adult literacy rate,% of people 15+,SE.ADT.LITR.ZS,Education,FALSE,FALSE,TRUE,1970,2024,170,21.4,7.8
-gdp_per_capita,GDP per capita,constant 2015 US$,NY.GDP.PCAP.KD,Economy,TRUE,TRUE,TRUE,1960,2025,213,96.6,80.5
-gdp_growth,GDP growth,annual %,NY.GDP.MKTP.KD.ZG,Economy,FALSE,FALSE,TRUE,1961,2025,214,96.8,79.7
-tax_revenue,Tax revenue,% of GDP,GC.TAX.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,32.9
-gov_rev_nogrant,Government revenue (excl. grants),% of GDP,GC.REV.XGRT.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,162,63.6,32.7
-gov_expense,Government expense,% of GDP,GC.XPN.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,31.1
-aid_received_gni,Aid received (net ODA),% of GNI,DT.ODA.ODAT.GN.ZS,Economy,FALSE,FALSE,NA,1960,2023,162,63.5,54.8
-fdi,"FDI, net inflows",% of GDP,BX.KLT.DINV.WD.GD.ZS,Economy,FALSE,FALSE,NA,1970,2025,203,90.2,65.8
-total_pop,Population,people,SP.POP.TOTL,Population,TRUE,TRUE,NA,1960,2025,217,100,99.8
-urban_pop,Urban population,% of total population,SP.URB.TOTL.IN.ZS,Population,FALSE,TRUE,NA,1960,2025,217,100,100
+variable,label,unit,source,code,theme,log_scale,forecastable,higher_is_better,first_year,last_year,n_countries,coverage_2010s,coverage_full
+gini_index,Gini index (World Bank),0-100,World Bank,SI.POV.GINI,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
+swiid_gini,"Gini index (SWIID, disposable income)",0-100,SWIID,gini_disp,Inequality,FALSE,FALSE,FALSE,1960,2025,194,75,45.4
+swiid_gini_mkt,"Gini index (SWIID, market income)",0-100,SWIID,gini_mkt,Inequality,FALSE,FALSE,FALSE,1960,2025,194,75,45.4
+pov_headcount,Poverty headcount ($3.00/day),% of population,World Bank,SI.POV.DDAY,Inequality,FALSE,FALSE,FALSE,1963,2025,171,38.5,17
+life_expect,Life expectancy,years,World Bank,SP.DYN.LE00.IN,Health,FALSE,TRUE,TRUE,1960,2024,217,100,98.2
+infant_mort,Infant mortality,"per 1,000 live births",World Bank,SP.DYN.IMRT.IN,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.6
+under5_mort,Under-5 mortality,"per 1,000 live births",World Bank,SH.DYN.MORT,Health,TRUE,TRUE,FALSE,1960,2024,196,90.3,82.8
+health_spend,Health spending,% of GDP,World Bank,SH.XPD.CHEX.GD.ZS,Health,FALSE,FALSE,NA,2000,2024,193,87.9,31.9
+oop_health,Out-of-pocket health spending,% of health spending,World Bank,SH.XPD.OOPC.CH.ZS,Health,FALSE,FALSE,FALSE,2000,2024,193,87.9,31.9
+hiv_prev,HIV prevalence,% of people 15-49,World Bank,SH.DYN.AIDS.ZS,Health,TRUE,FALSE,FALSE,1990,2024,153,69.8,36.8
+gross_prim_enrol,Primary enrollment (gross),% of age group,World Bank,SE.PRM.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,209,76.9,52.3
+gross_sec_enrol,Secondary enrollment (gross),% of age group,World Bank,SE.SEC.ENRR,Education,FALSE,FALSE,TRUE,1970,2025,208,67.6,43.8
+prim_comp_rate,Primary completion rate,% of age group,World Bank,SE.PRM.CMPT.ZS,Education,FALSE,FALSE,TRUE,1970,2025,198,63.9,35.3
+edc_spending,Education spending,% of GDP,World Bank,SE.XPD.TOTL.GD.ZS,Education,FALSE,FALSE,NA,1970,2025,203,72.5,35.8
+adlt_liter,Adult literacy rate,% of people 15+,World Bank,SE.ADT.LITR.ZS,Education,FALSE,FALSE,TRUE,1970,2024,170,21.4,7.8
+test_scores,Harmonized test scores,score (300-625),World Bank,HD.HCI.HLOS,Education,FALSE,FALSE,TRUE,2010,2020,169,19.4,4.1
+gdp_per_capita,GDP per capita,constant 2015 US$,World Bank,NY.GDP.PCAP.KD,Economy,TRUE,TRUE,TRUE,1960,2025,213,96.6,80.5
+gdp_growth,GDP growth,annual %,World Bank,NY.GDP.MKTP.KD.ZG,Economy,FALSE,FALSE,TRUE,1961,2025,214,96.8,79.7
+tax_revenue,Tax revenue,% of GDP,World Bank,GC.TAX.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,32.9
+gov_rev_nogrant,Government revenue (excl. grants),% of GDP,World Bank,GC.REV.XGRT.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,162,63.6,32.7
+gov_expense,Government expense,% of GDP,World Bank,GC.XPN.TOTL.GD.ZS,Economy,FALSE,FALSE,NA,1972,2024,161,63.6,31.1
+aid_received_gni,Aid received (net ODA),% of GNI,World Bank,DT.ODA.ODAT.GN.ZS,Economy,FALSE,FALSE,NA,1960,2023,162,63.5,54.8
+fdi,"FDI, net inflows",% of GDP,World Bank,BX.KLT.DINV.WD.GD.ZS,Economy,FALSE,FALSE,NA,1970,2025,203,90.2,65.8
+resource_rents,Natural resource rents,% of GDP,World Bank,NY.GDP.TOTL.RT.ZS,Economy,FALSE,FALSE,NA,1970,2021,214,96.3,64.5
+total_pop,Population,people,World Bank,SP.POP.TOTL,Population,TRUE,TRUE,NA,1960,2025,217,100,99.8
+urban_pop,Urban population,% of total population,World Bank,SP.URB.TOTL.IN.ZS,Population,FALSE,TRUE,NA,1960,2025,217,100,100
+happiness,Life evaluation (happiness),0-10 ladder score,World Happiness Report,Life evaluation,Wellbeing,FALSE,FALSE,TRUE,2011,2025,164,56.6,14.6
+democracy,Electoral democracy,index 0-1,V-Dem,v2x_polyarchy,Institutions,FALSE,FALSE,TRUE,1960,2025,175,80.6,75.5
+health_equality,Health equality,index (higher = more equal),V-Dem,v2pehealth,Institutions,FALSE,FALSE,TRUE,1960,2025,175,80.6,75.5
+educ_equality,Educational equality,index (higher = more equal),V-Dem,v2peedueq,Institutions,FALSE,FALSE,TRUE,1960,2025,175,80.6,75.5
+corruption,Political corruption,index 0-1 (higher = more corrupt),V-Dem,v2x_corr,Institutions,FALSE,FALSE,FALSE,1960,2025,175,80.6,74.9
