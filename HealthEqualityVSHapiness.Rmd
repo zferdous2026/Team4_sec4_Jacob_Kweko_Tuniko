@@ -1,0 +1,267 @@
+---
+title: "HealthEqualityVSHappiness"
+author: "Jacob De Fonseka"
+date: "2026-11-11"
+output: html_document
+---
+
+```{r}
+
+# INTERACTIVE HEALTH EQUALITY VS HAPPINESS BOXPLOT
+
+# PART 1: Load packages
+
+library(tidyverse)
+library(plotly)
+library(shiny)
+library(countrycode)
+
+
+# PART 2: Import dataset
+
+# Search for the dataset inside your project folders
+files <- list.files(
+  path = "~",
+  pattern = "^wdi_clean\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(files) == 0) {
+  stop("Cannot find wdi_clean.csv. Check your Files tab.")
+}
+
+data <- read_csv(files[1], show_col_types = FALSE)
+
+
+# PART 3: Prepare the data
+
+graph_data <- data %>%
+  filter(
+    !is.na(health_equality),
+    !is.na(happiness),
+    !is.na(year)
+  ) %>%
+  mutate(
+    Continent = countrycode(
+      iso3c, "iso3c", "continent"
+    )
+  ) %>%
+  filter(!is.na(Continent))
+
+
+# PART 4: Create the Shiny interface
+
+ui <- fluidPage(
+
+  titlePanel("Health Equality and Happiness Across Countries"),
+
+  p("Explore whether countries with greater health
+    equality tend to report higher happiness scores."),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      sliderInput(
+        "year",
+        "Select Year:",
+        min = min(graph_data$year),
+        max = max(graph_data$year),
+        value = 2022,
+        step = 1,
+        sep = ""
+      ),
+
+      selectInput(
+        "continent",
+        "Select Continent:",
+        choices = c(
+          "All Continents",
+          sort(unique(graph_data$Continent))
+        )
+      ),
+
+      actionButton("reset", "Reset Filters")
+    ),
+
+    mainPanel(
+
+      plotlyOutput("health_boxplot", height = "550px"),
+
+      h4("Summary Statistics"),
+
+      tableOutput("summary_table"),
+
+      textOutput("country_count")
+    )
+  )
+)
+
+
+# PART 5: Create Shiny server
+
+server <- function(input, output, session) {
+
+  filtered_data <- reactive({
+
+    df <- graph_data %>%
+      filter(year == input$year)
+
+    if (input$continent != "All Continents") {
+      df <- df %>%
+        filter(Continent == input$continent)
+    }
+
+    # Divide countries into three equality groups
+    # based on the selected data
+
+    if (nrow(df) >= 3) {
+
+      df <- df %>%
+        mutate(
+          Health_Group = ntile(health_equality, 3),
+          Health_Group = factor(
+            Health_Group,
+            levels = c(1, 2, 3),
+            labels = c(
+              "Lower Equality",
+              "Middle Equality",
+              "Higher Equality"
+            )
+          )
+        )
+
+    }
+
+    df
+  })
+
+
+  # PART 6: Interactive boxplot
+
+  output$health_boxplot <- renderPlotly({
+
+    df <- filtered_data()
+
+    validate(
+      need(
+        nrow(df) >= 3,
+        "Not enough country data for this selection."
+      )
+    )
+
+    df <- df %>%
+      mutate(
+        Hover = paste0(
+          "Country: ", country,
+          "<br>Year: ", year,
+          "<br>Continent: ", Continent,
+          "<br>Health Equality: ",
+          round(health_equality, 2),
+          "<br>Happiness Score: ",
+          round(happiness, 2)
+        )
+      )
+
+    p <- ggplot(
+      df,
+      aes(
+        x = Health_Group,
+        y = happiness,
+        fill = Health_Group
+      )
+    ) +
+
+      geom_boxplot(
+        alpha = 0.65,
+        outlier.shape = NA
+      ) +
+
+      geom_point(
+        aes(text = Hover),
+        position = position_jitter(
+          width = 0.15,
+          height = 0
+        ),
+        alpha = 0.65,
+        size = 2
+      ) +
+
+      labs(
+        title = paste(
+          "Health Equality vs Happiness:",
+          input$year
+        ),
+        x = "Health Equality Group",
+        y = "Happiness Score (0-10)"
+      ) +
+
+      theme_minimal() +
+
+      theme(
+        legend.position = "none",
+        plot.title = element_text(face = "bold")
+      )
+
+    ggplotly(p, tooltip = "text")
+  })
+
+
+  # PART 7: Summary table
+
+  output$summary_table <- renderTable({
+
+    df <- filtered_data()
+
+    req(nrow(df) >= 3)
+
+    df %>%
+      group_by(Health_Group) %>%
+      summarise(
+        Countries = n(),
+        Mean_Happiness = round(mean(happiness), 2),
+        Median_Happiness = round(median(happiness), 2),
+        .groups = "drop"
+      )
+  })
+
+
+  # PART 8: Country count
+
+  output$country_count <- renderText({
+
+    paste(
+      "Countries displayed:",
+      nrow(filtered_data())
+    )
+  })
+
+
+  # PART 9: Reset filters
+
+  observeEvent(input$reset, {
+
+    updateSliderInput(
+      session,
+      "year",
+      value = 2022
+    )
+
+    updateSelectInput(
+      session,
+      "continent",
+      selected = "All Continents"
+    )
+  })
+
+}
+
+
+# PART 10: Run the Shiny app
+
+shinyApp(ui, server)
+
+```
+
+
