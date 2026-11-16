@@ -1,0 +1,572 @@
+---
+title: "DemocracyVsCorruption"
+author: "Jacob De Fonseka"
+date: "2026-11-16"
+output: html_document
+---
+
+```{r}
+
+# ============================================================
+# INSTITUTIONS GRAPH: DEMOCRACY VS CORRUPTION
+# DATA 101 CAPSTONE PROJECT
+# Interactive Scatterplot using Shiny, ggplot2, and Plotly
+# Data Source: V-Dem (via wdi_clean.csv)
+# ============================================================
+
+
+# PART 1: LOAD PACKAGES
+
+library(shiny)
+library(tidyverse)
+library(plotly)
+
+
+# PART 2: IMPORT DATASET
+
+# Search for wdi_clean.csv in the project folder.
+# Also supports wdi_clean(1).csv.
+
+files <- list.files(
+  path = ".",
+  pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(files) == 0) {
+
+  files <- list.files(
+    path = "~",
+    pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+
+}
+
+if (length(files) == 0) {
+  stop("Cannot find wdi_clean.csv. Check your Files tab.")
+}
+
+# Prefer the original wdi_clean.csv when available.
+
+preferred <- files[
+  basename(files) == "wdi_clean.csv"
+]
+
+data_path <- if (length(preferred) > 0) {
+  preferred[1]
+} else {
+  files[1]
+}
+
+data <- read_csv(
+  data_path,
+  show_col_types = FALSE
+)
+
+
+# PART 3: CLEAN AND PREPARE DATA
+
+graph_data <- data %>%
+  mutate(
+    year = as.integer(year),
+    democracy = as.numeric(democracy),
+    corruption = as.numeric(corruption),
+    country = as.character(country),
+    region = as.character(region),
+    iso3c = as.character(iso3c)
+  ) %>%
+  filter(
+    !is.na(year),
+    !is.na(country),
+    !is.na(region),
+    !is.na(iso3c),
+    is.finite(democracy),
+    is.finite(corruption),
+    democracy >= 0,
+    democracy <= 1,
+    corruption >= 0,
+    corruption <= 1
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE)
+
+
+# PART 4: DEFAULT SETTINGS
+
+available_years <- sort(unique(graph_data$year))
+
+default_year <- if (2022 %in% available_years) {
+  2022
+} else {
+  max(available_years)
+}
+
+region_choices <- sort(unique(graph_data$region))
+
+
+# ============================================================
+# PART 5: USER INTERFACE
+# ============================================================
+
+ui <- fluidPage(
+
+  titlePanel(
+    "Democratic Institutions and Political Corruption"
+  ),
+
+  p(
+    "Explore the relationship between democracy and
+     political corruption across countries and years."
+  ),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      # YEAR SLIDER
+
+      sliderInput(
+        inputId = "year",
+        label = "Select Year:",
+        min = min(available_years),
+        max = max(available_years),
+        value = default_year,
+        step = 1,
+        sep = ""
+      ),
+
+      # REGION FILTER
+
+      selectInput(
+        inputId = "region",
+        label = "Select Region:",
+        choices = c(
+          "All Regions",
+          region_choices
+        ),
+        selected = "All Regions"
+      ),
+
+      # DEMOCRACY RANGE
+
+      sliderInput(
+        inputId = "democracy_range",
+        label = "Democracy Index Range:",
+        min = 0,
+        max = 1,
+        value = c(0, 1),
+        step = 0.05
+      ),
+
+      # CORRUPTION RANGE
+
+      sliderInput(
+        inputId = "corruption_range",
+        label = "Corruption Index Range:",
+        min = 0,
+        max = 1,
+        value = c(0, 1),
+        step = 0.05
+      ),
+
+      # REGRESSION LINE
+
+      checkboxInput(
+        inputId = "show_trend",
+        label = "Show Regression Line",
+        value = TRUE
+      ),
+
+      # COLOR BY REGION
+
+      checkboxInput(
+        inputId = "color_region",
+        label = "Color Countries by Region",
+        value = TRUE
+      ),
+
+      # RESET BUTTON
+
+      actionButton(
+        inputId = "reset",
+        label = "Reset Filters"
+      ),
+
+      hr(),
+
+      h4("Understanding the Variables"),
+
+      p(
+        strong("Democracy Index:"),
+        "Higher scores indicate stronger democracy."
+      ),
+
+      p(
+        strong("Political Corruption Index:"),
+        "Higher scores indicate greater political corruption."
+      ),
+
+      p(
+        "Both indices range from 0 to 1."
+      ),
+
+      hr(),
+
+      p("Data Source: Varieties of Democracy (V-Dem)")
+    ),
+
+    mainPanel(
+
+      plotlyOutput(
+        outputId = "democracy_scatter",
+        height = "580px"
+      ),
+
+      h4("Summary Statistics"),
+
+      fluidRow(
+
+        column(
+          4,
+          strong(textOutput("country_count"))
+        ),
+
+        column(
+          4,
+          strong(textOutput("correlation"))
+        ),
+
+        column(
+          4,
+          strong(textOutput("average_corruption"))
+        )
+
+      ),
+
+      hr(),
+
+      h4("Country Data"),
+
+      tableOutput("country_table"),
+
+      br(),
+
+      p(
+        "Note: Correlation does not establish causation."
+      )
+    )
+  )
+)
+
+
+# ============================================================
+# PART 6: SERVER
+# ============================================================
+
+server <- function(input, output, session) {
+
+
+  # PART 6A: FILTER DATA
+
+  filtered_data <- reactive({
+
+    df <- graph_data %>%
+      filter(
+        year == input$year,
+        democracy >= input$democracy_range[1],
+        democracy <= input$democracy_range[2],
+        corruption >= input$corruption_range[1],
+        corruption <= input$corruption_range[2]
+      )
+
+    if (input$region != "All Regions") {
+
+      df <- df %>%
+        filter(region == input$region)
+
+    }
+
+    df
+  })
+
+
+  # PART 6B: CREATE INTERACTIVE SCATTERPLOT
+
+  output$democracy_scatter <- renderPlotly({
+
+    df <- filtered_data()
+
+    validate(
+      need(
+        nrow(df) >= 2,
+        "Not enough countries for this selection."
+      )
+    )
+
+    # Create country-specific hover labels
+
+    df <- df %>%
+      mutate(
+        Hover = paste0(
+          "<b>", country, "</b>",
+          "<br>Year: ", year,
+          "<br>Region: ", region,
+          "<br>Democracy Index: ",
+          round(democracy, 3),
+          "<br>Corruption Index: ",
+          round(corruption, 3)
+        )
+      )
+
+    # Build scatterplot using ggplot2
+
+    if (input$color_region) {
+
+      p <- ggplot(
+        df,
+        aes(
+          x = democracy,
+          y = corruption,
+          color = region,
+          text = Hover
+        )
+      )
+
+    } else {
+
+      p <- ggplot(
+        df,
+        aes(
+          x = democracy,
+          y = corruption,
+          text = Hover
+        )
+      )
+
+    }
+
+    # Add country points
+
+    p <- p +
+      geom_point(
+        size = 2.8,
+        alpha = 0.8
+      )
+
+    # Add regression line if selected
+
+    if (input$show_trend && nrow(df) >= 3 &&
+        sd(df$democracy) > 0) {
+
+      p <- p +
+        geom_smooth(
+          method = "lm",
+          formula = y ~ x,
+          se = FALSE,
+          color = "black",
+          linewidth = 1,
+          inherit.aes = TRUE
+        )
+
+    }
+
+    # Format graph
+
+    p <- p +
+      labs(
+        title = paste(
+          "Democracy vs. Corruption:",
+          input$year
+        ),
+
+        subtitle = paste(
+          n_distinct(df$iso3c),
+          "countries"
+        ),
+
+        x = "Democracy Index (0 = Low, 1 = High)",
+
+        y = "Political Corruption Index (0 = Low, 1 = High)",
+
+        color = "Region",
+
+        caption = "Source: V-Dem"
+      ) +
+
+      coord_cartesian(
+        xlim = c(0, 1),
+        ylim = c(0, 1)
+      ) +
+
+      theme_minimal(base_size = 13) +
+
+      theme(
+        plot.title = element_text(
+          face = "bold",
+          size = 17
+        ),
+
+        plot.subtitle = element_text(
+          color = "gray40"
+        ),
+
+        legend.position = "right",
+
+        panel.grid.minor = element_blank()
+      )
+
+    # Convert ggplot2 to interactive Plotly
+
+    ggplotly(
+      p,
+      tooltip = "text"
+    ) %>%
+      layout(
+        hovermode = "closest",
+
+        margin = list(
+          t = 90,
+          b = 90,
+          l = 85,
+          r = 40
+        )
+      )
+
+  })
+
+
+  # PART 6C: COUNTRY COUNT
+
+  output$country_count <- renderText({
+
+    paste(
+      "Countries:",
+      n_distinct(filtered_data()$iso3c)
+    )
+
+  })
+
+
+  # PART 6D: PEARSON CORRELATION
+
+  output$correlation <- renderText({
+
+    df <- filtered_data()
+
+    if (
+      nrow(df) < 3 ||
+      sd(df$democracy) == 0 ||
+      sd(df$corruption) == 0
+    ) {
+      return("Pearson r: N/A")
+    }
+
+    r <- cor(
+      df$democracy,
+      df$corruption,
+      use = "complete.obs",
+      method = "pearson"
+    )
+
+    paste(
+      "Pearson r:",
+      round(r, 3)
+    )
+
+  })
+
+
+  # PART 6E: AVERAGE CORRUPTION
+
+  output$average_corruption <- renderText({
+
+    df <- filtered_data()
+
+    if (nrow(df) == 0) {
+      return("Average corruption: N/A")
+    }
+
+    paste(
+      "Avg. Corruption:",
+      round(mean(df$corruption), 3)
+    )
+
+  })
+
+
+  # PART 6F: COUNTRY DATA TABLE
+
+  output$country_table <- renderTable({
+
+    filtered_data() %>%
+      arrange(desc(democracy)) %>%
+      transmute(
+        Country = country,
+        Region = region,
+        Democracy = round(democracy, 3),
+        Corruption = round(corruption, 3)
+      )
+
+  }, striped = TRUE, bordered = TRUE)
+
+
+  # ==========================================================
+  # PART 7: RESET FILTERS
+  # ==========================================================
+
+  observeEvent(input$reset, {
+
+    updateSliderInput(
+      session,
+      "year",
+      value = default_year
+    )
+
+    updateSelectInput(
+      session,
+      "region",
+      selected = "All Regions"
+    )
+
+    updateSliderInput(
+      session,
+      "democracy_range",
+      value = c(0, 1)
+    )
+
+    updateSliderInput(
+      session,
+      "corruption_range",
+      value = c(0, 1)
+    )
+
+    updateCheckboxInput(
+      session,
+      "show_trend",
+      value = TRUE
+    )
+
+    updateCheckboxInput(
+      session,
+      "color_region",
+      value = TRUE
+    )
+
+  })
+
+}
+
+
+# ============================================================
+# PART 8: RUN SHINY APP
+# ============================================================
+
+shinyApp(
+  ui = ui,
+  server = server
+)
+
+```
+
