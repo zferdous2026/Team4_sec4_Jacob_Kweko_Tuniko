@@ -1,0 +1,933 @@
+---
+title: "PublicSpendingVsIncomeInequality"
+author: "Jacob De Fonseka"
+date: "2026-11-16"
+output: html_document
+---
+
+```{r}
+
+# ============================================================
+# DATA 101 CAPSTONE
+# INSTITUTIONS: PUBLIC SPENDING VS INCOME INEQUALITY
+#
+# X-axis:
+#   Government Expense (% GDP)
+#   Government Education Spending (% GDP)
+#
+# Y-axis:
+#   Income Inequality (SWIID Gini)
+#
+# Interactive Shiny + Plotly Scatterplot
+# ============================================================
+
+
+# PART 1: PACKAGES
+
+library(shiny)
+library(tidyverse)
+library(plotly)
+
+
+# PART 2: LOAD DATA
+
+files <- list.files(
+  path = ".",
+  pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(files) == 0) {
+  files <- list.files(
+    path = "~",
+    pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+}
+
+if (length(files) == 0) {
+  stop("Cannot find wdi_clean.csv in your project.")
+}
+
+# Prefer the original filename
+
+preferred <- files[
+  basename(files) == "wdi_clean.csv"
+]
+
+data_path <- if (length(preferred) > 0) {
+  preferred[1]
+} else {
+  files[1]
+}
+
+data <- read_csv(
+  data_path,
+  show_col_types = FALSE
+)
+
+# Verify required columns exist
+
+required_columns <- c(
+  "country",
+  "iso3c",
+  "region",
+  "year",
+  "gov_expense",
+  "edc_spending",
+  "swiid_gini"
+)
+
+missing_columns <- setdiff(
+  required_columns,
+  names(data)
+)
+
+if (length(missing_columns) > 0) {
+  stop(
+    paste(
+      "Missing columns:",
+      paste(missing_columns, collapse = ", ")
+    )
+  )
+}
+
+
+# PART 3: CLEAN DATA
+
+graph_data <- data %>%
+  transmute(
+    country = as.character(country),
+    iso3c = as.character(iso3c),
+    region = as.character(region),
+    year = as.integer(year),
+
+    gov_expense = as.numeric(gov_expense),
+    edc_spending = as.numeric(edc_spending),
+    swiid_gini = as.numeric(swiid_gini)
+  ) %>%
+  filter(
+    !is.na(country),
+    !is.na(iso3c),
+    !is.na(region),
+    !is.na(year)
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE)
+
+
+# PART 4: SAFE SLIDER SETTINGS
+
+# This function prevents NA/NULL slider errors.
+
+safe_max <- function(x, fallback = 100) {
+
+  x <- x[is.finite(x)]
+
+  if (length(x) == 0) {
+    return(fallback)
+  }
+
+  max(1, ceiling(max(x)))
+}
+
+safe_default <- function(x, fallback = 50) {
+
+  x <- x[is.finite(x)]
+
+  if (length(x) == 0) {
+    return(fallback)
+  }
+
+  max(
+    1,
+    ceiling(
+      as.numeric(
+        quantile(
+          x,
+          0.99,
+          na.rm = TRUE
+        )
+      )
+    )
+  )
+}
+
+# Set slider maximums
+
+x_max <- c(
+  gov_expense = safe_max(
+    graph_data$gov_expense
+  ),
+
+  edc_spending = safe_max(
+    graph_data$edc_spending
+  )
+)
+
+# Set default viewing ranges
+
+x_default <- c(
+  gov_expense = safe_default(
+    graph_data$gov_expense
+  ),
+
+  edc_spending = safe_default(
+    graph_data$edc_spending
+  )
+)
+
+# Ensure defaults are valid
+
+x_default <- pmin(
+  x_default,
+  x_max
+)
+
+# Available years
+
+years <- sort(
+  unique(graph_data$year)
+)
+
+if (length(years) == 0) {
+  stop("No valid years found in dataset.")
+}
+
+default_year <- if (2022 %in% years) {
+  2022
+} else {
+  max(years)
+}
+
+# Regions and countries
+
+regions <- sort(
+  unique(graph_data$region)
+)
+
+countries <- sort(
+  unique(graph_data$country)
+)
+
+# Variable labels
+
+x_choices <- c(
+  "Government Expense (% GDP)" = "gov_expense",
+  "Government Education Spending (% GDP)" = "edc_spending"
+)
+
+x_labels <- c(
+  gov_expense = "Government Expense (% of GDP)",
+  edc_spending = "Government Education Spending (% of GDP)"
+)
+
+
+# ============================================================
+# PART 5: USER INTERFACE
+# ============================================================
+
+ui <- fluidPage(
+
+  titlePanel(
+    "Public Spending and Income Inequality"
+  ),
+
+  p(
+    "Explore how public spending relates to income
+     inequality across countries and over time."
+  ),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      # X-AXIS VARIABLE
+
+      selectInput(
+        "x_variable",
+        "Choose Public Spending Variable:",
+        choices = x_choices,
+        selected = "gov_expense"
+      ),
+
+      # YEAR
+
+      sliderInput(
+        "year",
+        "Select Year:",
+        min = min(years),
+        max = max(years),
+        value = default_year,
+        step = 1,
+        sep = ""
+      ),
+
+      # REGION
+
+      selectInput(
+        "region",
+        "Select Region:",
+        choices = c(
+          "All Regions",
+          regions
+        ),
+        selected = "All Regions"
+      ),
+
+      # COUNTRIES
+
+      selectizeInput(
+        "countries",
+        "Select Countries (Blank = All):",
+        choices = countries,
+        selected = character(0),
+        multiple = TRUE,
+        options = list(
+          placeholder = "All Countries"
+        )
+      ),
+
+      # X-AXIS RANGE
+
+      sliderInput(
+        "x_range",
+        "Public Spending Range (% GDP):",
+        min = 0,
+        max = unname(x_max["gov_expense"]),
+        value = c(
+          0,
+          unname(x_default["gov_expense"])
+        ),
+        step = 1
+      ),
+
+      # Y-AXIS RANGE
+
+      sliderInput(
+        "y_range",
+        "Income Inequality Range (Gini):",
+        min = 0,
+        max = 100,
+        value = c(0, 100),
+        step = 1
+      ),
+
+      # REGRESSION LINE
+
+      checkboxInput(
+        "show_trend",
+        "Show Regression Line",
+        value = TRUE
+      ),
+
+      # REGION COLORS
+
+      checkboxInput(
+        "color_region",
+        "Color Countries by Region",
+        value = TRUE
+      ),
+
+      # RESET BUTTON
+
+      actionButton(
+        "reset",
+        "Reset Filters"
+      ),
+
+      hr(),
+
+      h4("How to Read This Graph"),
+
+      tags$ul(
+
+        tags$li(
+          strong("Each dot: "),
+          "Represents one country."
+        ),
+
+        tags$li(
+          strong("X-axis: "),
+          "Government spending as a percentage of GDP."
+        ),
+
+        tags$li(
+          strong("Y-axis: "),
+          "Income inequality measured using SWIID Gini."
+        ),
+
+        tags$li(
+          strong("Higher Gini: "),
+          "Greater income inequality."
+        ),
+
+        tags$li(
+          strong("Colors: "),
+          "Different world regions."
+        ),
+
+        tags$li(
+          strong("Black line: "),
+          "The overall linear regression trend."
+        ),
+
+        tags$li(
+          strong("Pearson r: "),
+          "Measures the strength and direction
+           of the linear relationship."
+        )
+      ),
+
+      hr(),
+
+      h4("Data Sources"),
+
+      p("Government Expense: World Bank"),
+
+      p("Education Spending: World Bank"),
+
+      p("Income Inequality: SWIID")
+    ),
+
+    mainPanel(
+
+      plotlyOutput(
+        "spending_scatter",
+        height = "570px"
+      ),
+
+      h4("Summary Statistics"),
+
+      fluidRow(
+
+        column(
+          4,
+          strong(textOutput("country_count"))
+        ),
+
+        column(
+          4,
+          strong(textOutput("correlation"))
+        ),
+
+        column(
+          4,
+          strong(textOutput("average_gini"))
+        )
+      ),
+
+      hr(),
+
+      h4("Country Data"),
+
+      tableOutput("country_table"),
+
+      hr(),
+
+      h4("Interpretation"),
+
+      textOutput("interpretation"),
+
+      br(),
+
+      p(
+        "Note: Correlation does not establish causation."
+      )
+    )
+  )
+)
+
+
+# ============================================================
+# PART 6: SERVER
+# ============================================================
+
+server <- function(input, output, session) {
+
+
+  # 6A: UPDATE X-AXIS SLIDER
+
+  observeEvent(input$x_variable, {
+
+    variable <- input$x_variable
+
+    updateSliderInput(
+      session,
+      "x_range",
+
+      label = paste0(
+        x_labels[[variable]],
+        " Range:"
+      ),
+
+      min = 0,
+
+      max = unname(
+        x_max[[variable]]
+      ),
+
+      value = c(
+        0,
+        unname(x_default[[variable]])
+      ),
+
+      step = 1
+    )
+  })
+
+
+  # 6B: FILTER DATA
+
+  filtered_data <- reactive({
+
+    req(input$x_variable)
+    req(input$x_range)
+    req(input$y_range)
+
+    df <- graph_data %>%
+      mutate(
+        x_value = .data[[input$x_variable]]
+      ) %>%
+      filter(
+        year == input$year,
+        is.finite(x_value),
+        is.finite(swiid_gini),
+
+        x_value >= input$x_range[1],
+        x_value <= input$x_range[2],
+
+        swiid_gini >= input$y_range[1],
+        swiid_gini <= input$y_range[2]
+      )
+
+    if (input$region != "All Regions") {
+
+      df <- df %>%
+        filter(
+          region == input$region
+        )
+    }
+
+    if (length(input$countries) > 0) {
+
+      df <- df %>%
+        filter(
+          country %in% input$countries
+        )
+    }
+
+    df
+  })
+
+
+  # 6C: CORRELATION
+
+  correlation_value <- reactive({
+
+    df <- filtered_data()
+
+    if (nrow(df) < 3) {
+      return(NA_real_)
+    }
+
+    if (
+      sd(df$x_value) == 0 ||
+      sd(df$swiid_gini) == 0
+    ) {
+      return(NA_real_)
+    }
+
+    cor(
+      df$x_value,
+      df$swiid_gini,
+      method = "pearson"
+    )
+  })
+
+
+  # ==========================================================
+  # PART 7: INTERACTIVE SCATTERPLOT
+  # ==========================================================
+
+  output$spending_scatter <- renderPlotly({
+
+    df <- filtered_data()
+
+    validate(
+      need(
+        nrow(df) > 0,
+        "No matching countries for this selection.
+         Try changing the year or expanding the ranges."
+      )
+    )
+
+    # Hover information
+
+    df <- df %>%
+      mutate(
+        Hover = paste0(
+          "<b>", country, "</b>",
+          "<br>Year: ", year,
+          "<br>Region: ", region,
+          "<br>", x_labels[[input$x_variable]],
+          ": ", round(x_value, 2),
+          "<br>SWIID Gini: ",
+          round(swiid_gini, 2)
+        )
+      )
+
+    # Build Plotly scatterplot
+
+    if (input$color_region) {
+
+      p <- plot_ly(
+        data = df,
+
+        x = ~x_value,
+        y = ~swiid_gini,
+
+        color = ~region,
+
+        text = ~Hover,
+        hoverinfo = "text",
+
+        type = "scatter",
+        mode = "markers",
+
+        marker = list(
+          size = 9,
+          opacity = 0.75
+        )
+      )
+
+    } else {
+
+      p <- plot_ly(
+        data = df,
+
+        x = ~x_value,
+        y = ~swiid_gini,
+
+        text = ~Hover,
+        hoverinfo = "text",
+
+        type = "scatter",
+        mode = "markers",
+
+        marker = list(
+          size = 9,
+          color = "#377EB8",
+          opacity = 0.75
+        ),
+
+        showlegend = FALSE
+      )
+    }
+
+    # Regression line
+
+    if (
+      input$show_trend &&
+      nrow(df) >= 3 &&
+      sd(df$x_value) > 0
+    ) {
+
+      model <- lm(
+        swiid_gini ~ x_value,
+        data = df
+      )
+
+      trend_x <- seq(
+        min(df$x_value),
+        max(df$x_value),
+        length.out = 100
+      )
+
+      trend_y <- predict(
+        model,
+        newdata = data.frame(
+          x_value = trend_x
+        )
+      )
+
+      p <- p %>%
+        add_lines(
+          x = trend_x,
+          y = trend_y,
+
+          inherit = FALSE,
+
+          line = list(
+            color = "black",
+            width = 3
+          ),
+
+          name = "Regression Line",
+          showlegend = FALSE,
+          hoverinfo = "skip"
+        )
+    }
+
+    # Layout
+
+    p %>%
+      layout(
+
+        title = list(
+          text = paste0(
+            x_labels[[input$x_variable]],
+            " vs. Income Inequality (",
+            input$year,
+            ")"
+          )
+        ),
+
+        xaxis = list(
+          title = x_labels[[input$x_variable]],
+          range = input$x_range,
+          autorange = FALSE
+        ),
+
+        yaxis = list(
+          title = "Income Inequality (SWIID Gini)",
+          range = input$y_range,
+          autorange = FALSE
+        ),
+
+        hovermode = "closest",
+
+        legend = list(
+          title = list(
+            text = "Region"
+          )
+        ),
+
+        margin = list(
+          t = 90,
+          b = 85,
+          l = 85,
+          r = 35
+        )
+      )
+  })
+
+
+  # ==========================================================
+  # PART 8: SUMMARY STATISTICS
+  # ==========================================================
+
+  output$country_count <- renderText({
+
+    paste(
+      "Countries:",
+      n_distinct(
+        filtered_data()$iso3c
+      )
+    )
+  })
+
+
+  output$correlation <- renderText({
+
+    r <- correlation_value()
+
+    if (is.na(r)) {
+      return("Pearson r: N/A")
+    }
+
+    paste0(
+      "Pearson r: ",
+      sprintf("%.3f", r)
+    )
+  })
+
+
+  output$average_gini <- renderText({
+
+    df <- filtered_data()
+
+    if (nrow(df) == 0) {
+      return("Average Gini: N/A")
+    }
+
+    paste0(
+      "Average Gini: ",
+      round(
+        mean(df$swiid_gini),
+        2
+      )
+    )
+  })
+
+
+  # ==========================================================
+  # PART 9: COUNTRY DATA TABLE
+  # ==========================================================
+
+  output$country_table <- renderTable({
+
+    df <- filtered_data()
+
+    if (nrow(df) == 0) {
+      return(NULL)
+    }
+
+    df %>%
+      arrange(desc(x_value)) %>%
+      transmute(
+        Country = country,
+        Region = region,
+        Year = year,
+
+        `Public Spending (% GDP)` = round(
+          x_value, 2
+        ),
+
+        `SWIID Gini` = round(
+          swiid_gini, 2
+        )
+      )
+
+  }, striped = TRUE, bordered = TRUE)
+
+
+  # ==========================================================
+  # PART 10: AUTOMATIC INTERPRETATION
+  # ==========================================================
+
+  output$interpretation <- renderText({
+
+    r <- correlation_value()
+
+    if (is.na(r)) {
+
+      return(
+        "There are not enough observations or
+         variation to calculate a Pearson correlation."
+      )
+    }
+
+    strength <- if (abs(r) < 0.2) {
+      "very weak"
+    } else if (abs(r) < 0.4) {
+      "weak"
+    } else if (abs(r) < 0.6) {
+      "moderate"
+    } else if (abs(r) < 0.8) {
+      "strong"
+    } else {
+      "very strong"
+    }
+
+    direction <- if (r > 0) {
+      "positive"
+    } else if (r < 0) {
+      "negative"
+    } else {
+      "no"
+    }
+
+    meaning <- if (r > 0) {
+
+      "Higher spending is associated with
+       higher income inequality."
+
+    } else if (r < 0) {
+
+      "Higher spending is associated with
+       lower income inequality."
+
+    } else {
+
+      "No linear association is detected."
+    }
+
+    paste0(
+      "For ", input$year,
+      ", the selected countries show a ",
+      strength, " ", direction,
+      " linear association (r = ",
+      round(r, 3), "). ",
+      meaning,
+      " This does not establish causation."
+    )
+  })
+
+
+  # ==========================================================
+  # PART 11: RESET FILTERS
+  # ==========================================================
+
+  observeEvent(input$reset, {
+
+    updateSelectInput(
+      session,
+      "x_variable",
+      selected = "gov_expense"
+    )
+
+    updateSliderInput(
+      session,
+      "year",
+      value = default_year
+    )
+
+    updateSelectInput(
+      session,
+      "region",
+      selected = "All Regions"
+    )
+
+    updateSelectizeInput(
+      session,
+      "countries",
+      selected = character(0)
+    )
+
+    updateSliderInput(
+      session,
+      "x_range",
+      min = 0,
+      max = unname(x_max["gov_expense"]),
+      value = c(
+        0,
+        unname(x_default["gov_expense"])
+      )
+    )
+
+    updateSliderInput(
+      session,
+      "y_range",
+      value = c(0, 100)
+    )
+
+    updateCheckboxInput(
+      session,
+      "show_trend",
+      value = TRUE
+    )
+
+    updateCheckboxInput(
+      session,
+      "color_region",
+      value = TRUE
+    )
+  })
+
+}
+
+
+# ============================================================
+# PART 12: RUN SHINY APP
+# ============================================================
+
+shinyApp(
+  ui = ui,
+  server = server
+)
+
+```
+
+
