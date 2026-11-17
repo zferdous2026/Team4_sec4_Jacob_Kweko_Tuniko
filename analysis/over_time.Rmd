@@ -39,33 +39,134 @@ Add, remove or rename the Q sections freely.
 
 **Data:** `ch` has one row per country. For every variable: `<var>_2000s`, `<var>_2010s`, `d_<var>` (2010s minus 2000s) and `pct_<var>` (% change; use for mortality and GDP). To control for economic growth, use `beyond(ch, x, y, control = "pct_gdp_per_capita")`.
 
-## Q1: TODO (your question)
+## Q1: Did countries that reduced inequality cut child deaths faster?
 
-**Variables:** TODO
+The chart code is the same as `change_chart()` in `R/page_over_time.R`; **if you change the chart, change it in both places.**
+
+**Variables:** `d_swiid_gini` (change in SWIID Gini, 2000s to 2010s, points) and `pct_under5_mort` (% change in under-5 mortality).
+
+```{r q1-chart}
+# Data: one row per country, 2000s vs 2010s (loaded once)
+change_data <- readRDS("data/country_change.rds")
+
+change_chart <- function() {
+  colours <- c("Low income" = "#86b6ef", "Lower middle income" = "#3987e5",
+               "Upper middle income" = "#1c5cab", "High income" = "#0d366b")
+
+  data <- change_data %>%
+    filter(!is.na(d_swiid_gini), !is.na(pct_under5_mort), !is.na(income)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", income,
+                        "<br>Gini: ", round(swiid_gini_2000s, 1), " to ", round(swiid_gini_2010s, 1),
+                        " (", sprintf("%+.1f", d_swiid_gini), " points)",
+                        "<br>Under-5 mortality: ", round(under5_mort_2000s, 1), " to ",
+                        round(under5_mort_2010s, 1), " (", sprintf("%+.0f", pct_under5_mort), "%)"))
+
+  # How many countries fall in each quadrant, for the corner labels
+  n_in <- function(gini_fell, mort_fell) {
+    sum((data$d_swiid_gini < 0) == gini_fell & (data$pct_under5_mort < 0) == mort_fell)
+  }
+  corners <- tibble(
+    x = c(-6.5, 2.8, -6.5, 2.8), y = c(40, 40, -62, -62),
+    # \n = line break, so the labels fit inside the chart
+    label = c(paste0("Inequality fell,\nmortality rose (", n_in(TRUE, FALSE), ")"),
+              paste0("Inequality rose,\nmortality rose (", n_in(FALSE, FALSE), ")"),
+              paste0("Inequality fell,\nmortality fell (", n_in(TRUE, TRUE), ")"),
+              paste0("Inequality rose,\nmortality fell (", n_in(FALSE, TRUE), ")"))
+  )
+
+  ggplot(data, aes(x = d_swiid_gini, y = pct_under5_mort)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60") +
+    geom_text(data = corners, aes(x = x, y = y, label = label),
+              colour = "grey45", size = 3.3) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = income, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = colours, name = NULL) +
+    labs(x = "Change in Gini index (SWIID), 2000s to 2010s (points)",
+         y = "Change in under-5 mortality (%)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+}
+```
 
 ```{r q1}
-# Example (replace with your own variables):
-# summarise_question(ch, "d_swiid_gini", "pct_under5_mort")
-# quick_scatter(ch, "d_swiid_gini", "pct_under5_mort")
+spearman(ch, "d_swiid_gini", "pct_under5_mort")
+# Accounting for economic growth
+beyond(ch, "d_swiid_gini", "pct_under5_mort", control = "pct_gdp_per_capita")
+change_chart()
 ```
 
-**Title:** TODO (the finding in one sentence)
+**Title:** Countries that reduced inequality did not cut child deaths faster
 
-**Caption:** TODO
+**Caption:** Preliminary: child mortality fell in almost every country between the 2000s and the 2010s, but no faster where inequality fell (r = -0.04, 175 countries; -0.07 accounting for economic growth). Across countries the link is strong (Inequality page, Figure 1); over time it disappears. TODO
 
-## Q2: TODO (your question)
+## Q2: Which changes went with faster progress?
 
-**Variables:** TODO
+The code is the same as in `R/page_over_time.R` (`progress_links` and `progress_chart()`); **if you change it, change it in both places.** Uses `change_data` from Q1.
+
+**Variables:** the 2000s-to-2010s change in each explanation (`pct_gdp_per_capita`, `d_gross_sec_enrol`, `d_urban_pop`, `d_health_equality`, `d_swiid_gini`, `d_democracy`, `d_edc_spending`, `d_health_spend`, `d_corruption`, `d_aid_received_gni`) against `pct_under5_mort`.
+
+```{r q2-chart}
+# Figure 2: which changes went with faster progress? ---------------------------
+# For each change between the 2000s and the 2010s, its Spearman correlation
+# with the % change in under-5 mortality. Negative = countries where this rose
+# more cut child mortality faster. Calculated once, when the app starts.
+progress_changes <- c(
+  pct_gdp_per_capita = "Economic growth (% change in GDP per capita)",
+  d_gross_sec_enrol  = "Secondary enrollment rose",
+  d_urban_pop        = "Urban population share rose",
+  d_health_equality  = "Healthcare became more equal",
+  d_swiid_gini       = "Inequality rose (Gini)",
+  d_democracy        = "Democracy improved",
+  d_edc_spending     = "Education spending rose",
+  d_health_spend     = "Health spending rose",
+  d_corruption       = "Corruption rose",
+  d_aid_received_gni = "Aid received rose"
+)
+
+progress_links <- bind_rows(lapply(names(progress_changes), function(v) {
+  ok <- !is.na(change_data[[v]]) & !is.na(change_data$pct_under5_mort)
+  test <- cor.test(change_data[[v]][ok], change_data$pct_under5_mort[ok],
+                   method = "spearman", exact = FALSE)
+  tibble(change = progress_changes[[v]], n = sum(ok),
+         r = unname(test$estimate), p = test$p.value)
+}))
+
+progress_chart <- function() {
+  data <- progress_links %>%
+    mutate(
+      # Sorted so the strongest "faster progress" link is at the top
+      change = reorder(change, -r),
+      clear = if_else(p < 0.05, "Clear link (p < 0.05)", "No clear link"),
+      tip = paste0("<b>", change, "</b>",
+                   "<br>r = ", sprintf("%.2f", r), " (", n, " countries)",
+                   "<br>p = ", signif(p, 2))
+    )
+
+  ggplot(data, aes(x = r, y = change, fill = clear, text = tip)) +
+    geom_col(width = 0.65) +
+    geom_vline(xintercept = 0, colour = "grey40") +
+    scale_fill_manual(values = c("Clear link (p < 0.05)" = "#1c5cab", "No clear link" = "#c8c7c1"),
+                      name = NULL) +
+    scale_x_continuous(limits = c(-0.45, 0.45)) +
+    labs(x = "Correlation with % change in under-5 mortality\n(negative = faster progress)",
+         y = NULL) +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank())
+}
+```
 
 ```{r q2}
-# Example (replace with your own variables):
-# summarise_question(ch, "d_swiid_gini", "pct_under5_mort")
-# quick_scatter(ch, "d_swiid_gini", "pct_under5_mort")
+progress_links %>% arrange(r)
+progress_chart()
 ```
 
-**Title:** TODO (the finding in one sentence)
+**Title:** Growth and schooling went with faster progress; inequality and spending did not
 
-**Caption:** TODO
+**Caption:** Preliminary: countries whose economies grew faster (r = -0.38) and whose secondary enrollment rose more (-0.26) cut child mortality faster. Changes in inequality, health spending and democracy show no link. Rising aid goes with slower progress (+0.31), most likely because aid goes to countries that are struggling. TODO
 
 ## Q3: TODO (your question)
 
