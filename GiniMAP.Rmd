@@ -1,0 +1,498 @@
+---
+title: "MAPGlobalInequality"
+author: "Jacob De Fonseka"
+date: "2026-11-06"
+output: html_document
+---
+
+```{r}
+
+# WORLD INCOME INEQUALITY EXPLORER
+# Combining World Bank WDI and OECD data
+
+# PART 1: Load packages
+
+library(shiny)
+library(plotly)
+library(tidyverse)
+library(WDI)
+library(countrycode)
+
+
+# PART 2: Download World Bank Gini data
+
+wdi_data <- WDI(
+  country = "all",
+  indicator = "SI.POV.GINI",
+  start = 2010,
+  end = 2024
+) %>%
+  transmute(
+    country,
+    iso3c,
+    year = as.integer(year),
+    Gini = as.numeric(SI.POV.GINI)
+  ) %>%
+  filter(
+    !is.na(iso3c),
+    !is.na(Gini),
+    Gini >= 0,
+    Gini <= 100
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE)
+
+
+# PART 3: Import your OECD CSV
+
+# Find the OECD file in your project folder
+
+oecd_files <- list.files(
+  path = ".",
+  pattern = "^OECD.*\\.csv$",
+  full.names = TRUE
+)
+
+if (length(oecd_files) == 0) {
+  stop(
+    "OECD CSV not found. Upload the OECD CSV ",
+    "to your current RStudio project folder."
+  )
+}
+
+oecd_raw <- read_csv(
+  oecd_files[1],
+  show_col_types = FALSE
+)
+
+
+# PART 4: Clean the OECD data
+
+# Use Gini for disposable income,
+# total population, current definition,
+# and annual observations.
+
+oecd_data <- oecd_raw %>%
+  filter(
+    MEASURE == "INC_DISP_GINI",
+    AGE == "_T",
+    DEFINITION == "D_CUR",
+    FREQ == "A"
+  ) %>%
+  mutate(
+    year = as.integer(TIME_PERIOD),
+    Gini = as.numeric(OBS_VALUE) * 100,
+    iso3c = REF_AREA
+  ) %>%
+  filter(
+    year >= 2010,
+    year <= 2024,
+    !is.na(Gini),
+    Gini >= 0,
+    Gini <= 100
+  ) %>%
+  arrange(
+    iso3c,
+    year,
+    desc(METHODOLOGY == "METH2012")
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE) %>%
+  transmute(
+    country = `Reference area`,
+    iso3c,
+    year,
+    Gini
+  )
+
+
+# PART 5: Combine the datasets
+
+# WDI gets priority.
+# OECD fills missing country-year values.
+
+graph_data <- full_join(
+  wdi_data %>%
+    rename(
+      WDI_Gini = Gini,
+      WDI_Country = country
+    ),
+  oecd_data %>%
+    rename(
+      OECD_Gini = Gini,
+      OECD_Country = country
+    ),
+  by = c("iso3c", "year")
+) %>%
+  mutate(
+    Gini = coalesce(WDI_Gini, OECD_Gini),
+
+    country = coalesce(
+      WDI_Country,
+      OECD_Country
+    ),
+
+    Source = case_when(
+      !is.na(WDI_Gini) ~ "WDI",
+      !is.na(OECD_Gini) ~ "OECD",
+      TRUE ~ NA_character_
+    ),
+
+    Continent = countrycode(
+      iso3c,
+      "iso3c",
+      "continent"
+    )
+  ) %>%
+  filter(
+    !is.na(Gini),
+    !is.na(Continent),
+    !is.na(iso3c)
+  ) %>%
+  arrange(country, year)
+
+# Check how many observations came from each source
+
+print(table(graph_data$Source))
+
+# Check the total number of countries
+
+print(n_distinct(graph_data$iso3c))
+
+
+# PART 6: Create the interactive interface
+
+ui <- fluidPage(
+
+  titlePanel(
+    "World Income Inequality Explorer"
+  ),
+
+  p(
+    "Explore income inequality across countries",
+    "using World Bank and OECD data.",
+    "Darker red indicates greater inequality."
+  ),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      sliderInput(
+        "year",
+        "Select Year:",
+        min = 2010,
+        max = 2024,
+        value = 2022,
+        step = 1,
+        sep = ""
+      ),
+
+      selectInput(
+        "continent",
+        "Select Continent:",
+        choices = c(
+          "All Continents",
+          sort(unique(graph_data$Continent))
+        )
+      ),
+
+      sliderInput(
+        "gini_range",
+        "Select Gini Coefficient Range:",
+        min = 0,
+        max = 100,
+        value = c(0, 100)
+      ),
+
+      checkboxInput(
+        "compare",
+        "Compare Two Countries",
+        value = FALSE
+      ),
+
+      conditionalPanel(
+        condition = "input.compare == true",
+
+        selectInput(
+          "country1",
+          "First Country:",
+          choices = sort(unique(graph_data$country)),
+          selected = "United States"
+        ),
+
+        selectInput(
+          "country2",
+          "Second Country:",
+          choices = sort(unique(graph_data$country)),
+          selected = "Canada"
+        )
+      ),
+
+      actionButton(
+        "reset",
+        "Reset Filters"
+      ),
+
+      hr(),
+
+      p(
+        "Data sources:",
+        "World Bank WDI and OECD."
+      ),
+
+      p(
+        "Gray countries have no available",
+        "Gini value for the selected year."
+      )
+    ),
+
+    mainPanel(
+
+      plotlyOutput(
+        "world_map",
+        height = "550px"
+      ),
+
+      h4(textOutput("country_count")),
+
+      tableOutput("source_table"),
+
+      conditionalPanel(
+        condition = "input.compare == true",
+
+        h3("Country Comparison Over Time"),
+
+        plotlyOutput(
+          "comparison_plot",
+          height = "350px"
+        )
+      )
+    )
+  )
+)
+
+
+# PART 7: Create the Shiny server
+
+server <- function(input, output, session) {
+
+  # Apply the selected filters
+
+  filtered_data <- reactive({
+
+    data <- graph_data %>%
+      filter(
+        year == input$year,
+        Gini >= input$gini_range[1],
+        Gini <= input$gini_range[2]
+      )
+
+    if (input$continent != "All Continents") {
+      data <- data %>%
+        filter(Continent == input$continent)
+    }
+
+    data
+  })
+
+
+  # PART 8: Interactive world map
+
+  output$world_map <- renderPlotly({
+
+    map_data <- filtered_data()
+
+    validate(
+      need(
+        nrow(map_data) > 0,
+        "No countries match the selected filters."
+      )
+    )
+
+    plot_ly(
+      data = map_data,
+      type = "choropleth",
+
+      locations = ~iso3c,
+      locationmode = "ISO-3",
+
+      z = ~Gini,
+
+      text = ~paste0(
+        "Country: ", country,
+        "<br>Continent: ", Continent,
+        "<br>Year: ", year,
+        "<br>Gini Coefficient: ",
+        round(Gini, 1),
+        "<br>Data Source: ", Source
+      ),
+
+      hoverinfo = "text",
+
+      # WHITE = EQUALITY
+      # DARK RED = HIGH INEQUALITY
+
+      colorscale = list(
+        c(0.00, "#FFFFFF"),
+        c(0.25, "#FFE5E5"),
+        c(0.50, "#FF7777"),
+        c(0.75, "#CC2222"),
+        c(1.00, "#660000")
+      ),
+
+      zmin = 0,
+      zmax = 100,
+
+      colorbar = list(
+        title = "Gini Index",
+        tickvals = c(0, 25, 50, 75, 100)
+      ),
+
+      marker = list(
+        line = list(
+          color = "gray",
+          width = 0.4
+        )
+      )
+    ) %>%
+      layout(
+
+        title = paste(
+          "Global Income Inequality:",
+          input$year
+        ),
+
+        geo = list(
+          showframe = FALSE,
+          showcoastlines = TRUE,
+          showland = TRUE,
+          landcolor = "#E6E6E6",
+
+          projection = list(
+            type = "natural earth"
+          )
+        )
+      )
+  })
+
+
+  # PART 9: Country count
+
+  output$country_count <- renderText({
+
+    paste(
+      "Countries displayed:",
+      n_distinct(filtered_data()$iso3c)
+    )
+  })
+
+
+  # Show how many countries use each source
+
+  output$source_table <- renderTable({
+
+    filtered_data() %>%
+      count(Source, name = "Countries") %>%
+      arrange(desc(Countries))
+
+  })
+
+
+  # PART 10: Compare countries over time
+
+  output$comparison_plot <- renderPlotly({
+
+    req(input$compare)
+
+    comparison_data <- graph_data %>%
+      filter(
+        country %in% c(
+          input$country1,
+          input$country2
+        )
+      ) %>%
+      mutate(
+        Hover = paste0(
+          "Country: ", country,
+          "<br>Year: ", year,
+          "<br>Gini: ", round(Gini, 1),
+          "<br>Data Source: ", Source
+        )
+      )
+
+    validate(
+      need(
+        nrow(comparison_data) > 0,
+        "No comparison data available."
+      )
+    )
+
+    p <- ggplot(
+      comparison_data,
+      aes(
+        x = year,
+        y = Gini,
+        color = country,
+        group = country,
+        text = Hover
+      )
+    ) +
+      geom_line() +
+      geom_point(size = 2) +
+
+      labs(
+        title = "Income Inequality Over Time",
+        x = "Year",
+        y = "Gini Coefficient",
+        color = "Country"
+      ) +
+
+      scale_y_continuous(
+        limits = c(0, 100)
+      ) +
+
+      theme_minimal()
+
+    ggplotly(p, tooltip = "text")
+  })
+
+
+  # PART 11: Reset all filters
+
+  observeEvent(input$reset, {
+
+    updateSliderInput(
+      session,
+      "year",
+      value = 2022
+    )
+
+    updateSelectInput(
+      session,
+      "continent",
+      selected = "All Continents"
+    )
+
+    updateSliderInput(
+      session,
+      "gini_range",
+      value = c(0, 100)
+    )
+
+    updateCheckboxInput(
+      session,
+      "compare",
+      value = FALSE
+    )
+  })
+
+}
+
+
+# PART 12: Launch the app
+
+shinyApp(ui, server)
+
+```
+
+
+

@@ -1,0 +1,735 @@
+---
+title: "EducationEqualityvs.Happiness"
+author: "Jacob De Fonseka"
+date: "2026-11-13"
+output: html_document
+---
+
+```{r}
+
+# ============================================================
+# GRAPH 6: EDUCATION EQUALITY VS. LIFE EXPECTANCY
+# Interactive Bar Graph | DATA 101 Capstone
+# Sources: V-Dem and World Bank
+# ============================================================
+
+
+# 1. LOAD PACKAGES
+
+library(shiny)
+library(tidyverse)
+library(plotly)
+
+
+# 2. LOAD DATA
+
+files <- list.files(
+  ".",
+  pattern = "^wdi_clean\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(files) == 0) {
+  files <- list.files(
+    "~",
+    pattern = "^wdi_clean\\.csv$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+}
+
+if (length(files) == 0) {
+  stop("Could not find wdi_clean.csv.")
+}
+
+data <- read_csv(files[1], show_col_types = FALSE)
+
+
+# 3. CLEAN DATA
+
+graph_data <- data %>%
+  mutate(
+    year = as.integer(year),
+    educ_equality = as.numeric(educ_equality),
+    life_expect = as.numeric(life_expect),
+    country = as.character(country),
+    region = as.character(region)
+  ) %>%
+  filter(
+    !is.na(year),
+    !is.na(country),
+    !is.na(region),
+    !is.na(iso3c),
+    is.finite(educ_equality),
+    is.finite(life_expect),
+    life_expect > 0,
+    life_expect <= 110
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE)
+
+
+# 4. DEFAULT SETTINGS
+
+available_years <- sort(unique(graph_data$year))
+
+default_year <- if (2022 %in% available_years) {
+  2022
+} else {
+  max(available_years)
+}
+
+edu_limits <- c(
+  floor(min(graph_data$educ_equality) * 10) / 10,
+  ceiling(max(graph_data$educ_equality) * 10) / 10
+)
+
+life_axis_max <- 110
+
+group_levels <- c(
+  "Lower Equality",
+  "Middle Equality",
+  "Higher Equality"
+)
+
+group_colors <- c(
+  "Lower Equality" = "#E57373",
+  "Middle Equality" = "#FFB74D",
+  "Higher Equality" = "#64B5F6"
+)
+
+
+# ============================================================
+# 5. USER INTERFACE
+# ============================================================
+
+ui <- fluidPage(
+
+  titlePanel(
+    "Education Equality and Life Expectancy"
+  ),
+
+  p(
+    "Explore how equality in educational opportunities
+     is associated with life expectancy across countries."
+  ),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      # YEAR
+
+      sliderInput(
+        "year",
+        "Select Year:",
+        min = min(available_years),
+        max = max(available_years),
+        value = default_year,
+        step = 1,
+        sep = ""
+      ),
+
+      # REGION
+
+      selectInput(
+        "region",
+        "Select Region:",
+        choices = c(
+          "All Regions",
+          sort(unique(graph_data$region))
+        ),
+        selected = "All Regions"
+      ),
+
+      # EDUCATION EQUALITY RANGE
+
+      sliderInput(
+        "education_range",
+        "Education Equality Range:",
+        min = edu_limits[1],
+        max = edu_limits[2],
+        value = edu_limits,
+        step = 0.1
+      ),
+
+      # LIFE EXPECTANCY AXIS
+
+      sliderInput(
+        "y_range",
+        "Life Expectancy Y-Axis Range:",
+        min = 0,
+        max = life_axis_max,
+        value = c(0, 100),
+        step = 5
+      ),
+
+      # MEAN OR MEDIAN
+
+      radioButtons(
+        "statistic",
+        "Choose Statistic:",
+        choices = c("Mean", "Median"),
+        selected = "Mean",
+        inline = TRUE
+      ),
+
+      # COUNTRY DOTS
+
+      checkboxInput(
+        "show_points",
+        "Show Individual Countries",
+        value = TRUE
+      ),
+
+      # RESET
+
+      actionButton(
+        "reset",
+        "Reset Filters"
+      ),
+
+      hr(),
+
+      strong("Data Sources"),
+
+      p("Education Equality: V-Dem"),
+
+      p("Life Expectancy: World Bank"),
+
+      p(
+        "Countries are divided into three equally
+         sized groups based on education equality
+         within the selected year and region."
+      )
+    ),
+
+    mainPanel(
+
+      plotlyOutput(
+        "education_barplot",
+        height = "550px"
+      ),
+
+      h4("Summary Statistics"),
+
+      tableOutput("summary_table"),
+
+      br(),
+
+      strong(textOutput("country_count")),
+
+      textOutput("correlation_text"),
+
+      textOutput("difference_text"),
+
+      br(),
+
+      p(
+        "Note: This graph shows an association,
+         not a causal relationship."
+      )
+    )
+  )
+)
+
+
+# ============================================================
+# 6. SERVER
+# ============================================================
+
+server <- function(input, output, session) {
+
+
+  # 6A. FILTER DATA
+
+  filtered_data <- reactive({
+
+    df <- graph_data %>%
+      filter(
+        year == input$year,
+        educ_equality >= input$education_range[1],
+        educ_equality <= input$education_range[2]
+      )
+
+    if (input$region != "All Regions") {
+      df <- df %>%
+        filter(region == input$region)
+    }
+
+    if (nrow(df) < 3) {
+      return(df)
+    }
+
+    # Rank countries by education equality
+    # and divide into three groups.
+
+    df <- df %>%
+      mutate(
+        group_number = ntile(educ_equality, 3),
+
+        Education_Group = factor(
+          group_number,
+          levels = 1:3,
+          labels = group_levels
+        )
+      )
+
+    df
+  })
+
+
+  # 6B. CALCULATE SUMMARY STATISTICS
+
+  summary_data <- reactive({
+
+    df <- filtered_data()
+
+    req(nrow(df) >= 3)
+
+    df %>%
+      group_by(Education_Group) %>%
+      summarise(
+        Countries = n_distinct(iso3c),
+
+        Mean_Life = mean(life_expect),
+
+        Median_Life = median(life_expect),
+
+        Min_Life = min(life_expect),
+
+        Max_Life = max(life_expect),
+
+        .groups = "drop"
+      ) %>%
+      mutate(
+        Display_Value = if (
+          input$statistic == "Mean"
+        ) {
+          Mean_Life
+        } else {
+          Median_Life
+        },
+
+        Hover = paste0(
+          "<b>", Education_Group, "</b>",
+          "<br>Countries: ", Countries,
+          "<br>Mean Life Expectancy: ",
+          round(Mean_Life, 2), " years",
+          "<br>Median Life Expectancy: ",
+          round(Median_Life, 2), " years",
+          "<br>Minimum: ",
+          round(Min_Life, 2), " years",
+          "<br>Maximum: ",
+          round(Max_Life, 2), " years"
+        )
+      )
+  })
+
+
+  # ==========================================================
+  # 7. INTERACTIVE BAR GRAPH
+  # ==========================================================
+
+  output$education_barplot <- renderPlotly({
+
+    df <- filtered_data()
+
+    validate(
+      need(
+        nrow(df) >= 6,
+        "Not enough countries for this selection."
+      )
+    )
+
+    bars <- summary_data()
+
+    # Create Plotly graph directly to avoid
+    # the ggplotly quosure error.
+
+    p <- plot_ly()
+
+    # Add bars
+
+    p <- p %>%
+      add_bars(
+        x = as.character(bars$Education_Group),
+        y = bars$Display_Value,
+
+        text = bars$Hover,
+        hoverinfo = "text",
+
+        marker = list(
+          color = unname(
+            group_colors[
+              as.character(bars$Education_Group)
+            ]
+          )
+        ),
+
+        width = 0.6,
+
+        name = "Life Expectancy",
+
+        showlegend = FALSE
+      )
+
+    # Add value labels
+
+    p <- p %>%
+      add_text(
+        x = as.character(bars$Education_Group),
+        y = bars$Display_Value,
+
+        text = sprintf(
+          "%.1f",
+          bars$Display_Value
+        ),
+
+        textposition = "top center",
+
+        textfont = list(
+          size = 13,
+          color = "#222222"
+        ),
+
+        hoverinfo = "skip",
+        showlegend = FALSE
+      )
+
+    # Add individual country observations
+
+    if (input$show_points) {
+
+      df <- df %>%
+        mutate(
+          Hover = paste0(
+            "<b>", country, "</b>",
+            "<br>Region: ", region,
+            "<br>Year: ", year,
+            "<br>Education Equality: ",
+            round(educ_equality, 2),
+            "<br>Life Expectancy: ",
+            round(life_expect, 2),
+            " years"
+          )
+        )
+
+      # Jitter points horizontally so they overlap less.
+      # Set seed for reproducibility.
+
+      set.seed(101)
+
+      df <- df %>%
+        mutate(
+          group_position = as.numeric(
+            Education_Group
+          ),
+
+          jitter_position = group_position +
+            runif(n(), -0.19, 0.19)
+        )
+
+      p <- p %>%
+        add_markers(
+          x = df$jitter_position,
+          y = df$life_expect,
+
+          text = df$Hover,
+          hoverinfo = "text",
+
+          marker = list(
+            size = 7,
+            color = "#202020",
+            opacity = 0.55,
+            line = list(
+              color = "white",
+              width = 0.5
+            )
+          ),
+
+          name = "Countries",
+          showlegend = FALSE
+        )
+    }
+
+    # Use numeric x-axis positions for both bars and dots.
+    # Rebuild with numeric positions to ensure alignment.
+
+    p <- plot_ly()
+
+    p <- p %>%
+      add_bars(
+        x = seq_len(nrow(bars)),
+        y = bars$Display_Value,
+
+        text = bars$Hover,
+        hoverinfo = "text",
+
+        marker = list(
+          color = unname(
+            group_colors[
+              as.character(bars$Education_Group)
+            ]
+          )
+        ),
+
+        width = 0.65,
+        showlegend = FALSE
+      )
+
+    p <- p %>%
+      add_text(
+        x = seq_len(nrow(bars)),
+        y = bars$Display_Value,
+
+        text = sprintf(
+          "%.1f",
+          bars$Display_Value
+        ),
+
+        textposition = "top center",
+        hoverinfo = "skip",
+        showlegend = FALSE
+      )
+
+    if (input$show_points) {
+
+      p <- p %>%
+        add_markers(
+          x = df$jitter_position,
+          y = df$life_expect,
+
+          text = df$Hover,
+          hoverinfo = "text",
+
+          marker = list(
+            size = 7,
+            color = "#222222",
+            opacity = 0.55
+          ),
+
+          showlegend = FALSE
+        )
+    }
+
+    # Final layout
+
+    p %>%
+      layout(
+
+        title = list(
+          text = paste0(
+            input$statistic,
+            " Life Expectancy by Education Equality (",
+            input$year,
+            ")"
+          )
+        ),
+
+        xaxis = list(
+          title = "Education Equality Group",
+
+          tickmode = "array",
+
+          tickvals = 1:3,
+
+          ticktext = group_levels,
+
+          range = c(0.45, 3.55)
+        ),
+
+        yaxis = list(
+          title = "Life Expectancy (Years)",
+
+          range = input$y_range,
+
+          autorange = FALSE,
+
+          zeroline = TRUE
+        ),
+
+        bargap = 0.35,
+
+        hovermode = "closest",
+
+        margin = list(
+          t = 90,
+          b = 90,
+          l = 75,
+          r = 30
+        )
+      )
+  })
+
+
+  # ==========================================================
+  # 8. SUMMARY TABLE
+  # ==========================================================
+
+  output$summary_table <- renderTable({
+
+    df <- filtered_data()
+
+    validate(
+      need(
+        nrow(df) >= 3,
+        "Not enough countries."
+      )
+    )
+
+    summary_data() %>%
+      transmute(
+        `Education Equality Group` = Education_Group,
+
+        Countries,
+
+        `Mean Life Expectancy` = round(
+          Mean_Life, 2
+        ),
+
+        `Median Life Expectancy` = round(
+          Median_Life, 2
+        )
+      )
+
+  }, striped = TRUE, bordered = TRUE)
+
+
+  # ==========================================================
+  # 9. COUNTRY COUNT
+  # ==========================================================
+
+  output$country_count <- renderText({
+
+    paste(
+      "Countries displayed:",
+      n_distinct(filtered_data()$iso3c)
+    )
+  })
+
+
+  # ==========================================================
+  # 10. PEARSON CORRELATION
+  # ==========================================================
+
+  output$correlation_text <- renderText({
+
+    df <- filtered_data()
+
+    if (
+      nrow(df) < 3 ||
+      sd(df$educ_equality) == 0 ||
+      sd(df$life_expect) == 0
+    ) {
+      return("Pearson correlation unavailable.")
+    }
+
+    r <- cor(
+      df$educ_equality,
+      df$life_expect,
+      use = "complete.obs"
+    )
+
+    paste0(
+      "Pearson correlation (r): ",
+      round(r, 3)
+    )
+  })
+
+
+  # ==========================================================
+  # 11. DIFFERENCE BETWEEN HIGHEST AND LOWEST GROUP
+  # ==========================================================
+
+  output$difference_text <- renderText({
+
+    df <- filtered_data()
+
+    if (nrow(df) < 6) {
+      return("")
+    }
+
+    bars <- summary_data()
+
+    low <- bars$Display_Value[
+      bars$Education_Group == "Lower Equality"
+    ]
+
+    high <- bars$Display_Value[
+      bars$Education_Group == "Higher Equality"
+    ]
+
+    if (length(low) == 0 || length(high) == 0) {
+      return("")
+    }
+
+    difference <- high - low
+
+    paste0(
+      "Difference between higher and lower ",
+      "education equality groups: ",
+      round(difference, 2),
+      " years (",
+      tolower(input$statistic),
+      " life expectancy)."
+    )
+  })
+
+
+  # ==========================================================
+  # 12. RESET FILTERS
+  # ==========================================================
+
+  observeEvent(input$reset, {
+
+    updateSliderInput(
+      session,
+      "year",
+      value = default_year
+    )
+
+    updateSelectInput(
+      session,
+      "region",
+      selected = "All Regions"
+    )
+
+    updateSliderInput(
+      session,
+      "education_range",
+      value = edu_limits
+    )
+
+    updateSliderInput(
+      session,
+      "y_range",
+      value = c(0, 100)
+    )
+
+    updateRadioButtons(
+      session,
+      "statistic",
+      selected = "Mean"
+    )
+
+    updateCheckboxInput(
+      session,
+      "show_points",
+      value = TRUE
+    )
+  })
+
+}
+
+
+# ============================================================
+# 13. LAUNCH APPLICATION
+# ============================================================
+
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
