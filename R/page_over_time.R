@@ -132,6 +132,7 @@ progress_chart <- function() {
 over_time_figures <- list(
   list(
     id = "1", title = "Countries that reduced inequality did not cut child deaths faster",
+    stat = "r = \u22120.04 over time",
     chart = "Change scatter: change in Gini vs % change in under-5 mortality, 2000s to 2010s",
     plot = function(d) change_chart(),
     height = "480px",
@@ -139,6 +140,7 @@ over_time_figures <- list(
   ),
   list(
     id = "2", title = "Growth and schooling went with faster progress; inequality and spending did not",
+    stat = "Growth: r = \u22120.38",
     chart = "Bar chart: correlation of each 2000s-to-2010s change with the % change in under-5 mortality",
     plot = function(d) progress_chart(),
     height = "440px",

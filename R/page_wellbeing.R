@@ -78,6 +78,7 @@ health_happiness_chart <- function(d, by_income = FALSE) {
 wellbeing_figures <- list(
   list(
     id = "1", title = "Countries with more equal healthcare report higher happiness",
+    stat = "r = 0.68 \u00b7 162 countries",
     chart = "Box plot: happiness by thirds of health equality, 2010s",
     x = "health_equality", y = "happiness",
     plot = function(d, toggle) health_happiness_chart(d, by_income = toggle),

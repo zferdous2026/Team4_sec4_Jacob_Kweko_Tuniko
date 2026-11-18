@@ -24,6 +24,9 @@
 #
 # Working example: R/page_inequality.R (Jacob's figure).
 #
+# Figure 2 is Jacob's (PublicSpendingVsIncomeInequality.Rmd), rebuilt on
+# 2010s averages.
+#
 # ## Data
 #   data/country_period.rds (2010s averages): any variable in docs/variables.md.
 # =============================================================================
@@ -66,18 +69,52 @@ redistribution_chart <- function(d) {
     theme(panel.grid.minor = element_blank(), strip.text = element_text(face = "bold"))
 }
 
+# Figure 2: government spending vs inequality (Jacob's) -------------------------
+# From PublicSpendingVsIncomeInequality.Rmd. Uses 2010s averages instead of a
+# single year, which more than doubles the number of countries. The toggle
+# switches from total government expense to education spending (Jacob's
+# x-axis choice).
+spending_inequality_chart <- function(d, education = FALSE) {
+  colours <- c("Low income" = "#86b6ef", "Lower middle income" = "#3987e5",
+               "Upper middle income" = "#1c5cab", "High income" = "#0d366b")
+  x_var   <- if (education) "edc_spending" else "gov_expense"
+  x_label <- if (education) "Education spending (% of GDP)" else "Government expense (% of GDP)"
+
+  d <- d %>%
+    filter(!is.na(.data[[x_var]]), !is.na(swiid_gini), !is.na(income)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", income,
+                        "<br>", x_label, ": ", round(.data[[x_var]], 1),
+                        "<br>Gini (SWIID): ", round(swiid_gini, 1)))
+
+  ggplot(d, aes(x = .data[[x_var]], y = swiid_gini)) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = income, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = colours, name = NULL) +
+    labs(x = x_label, y = "Gini index (SWIID, after taxes and transfers)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+}
+
 spending_figures <- list(
   list(
     id = "1", title = "What matters is inequality after taxes and transfers, not before",
+    stat = "Redistribution: r = \u22120.40",
     chart = "Two scatters: Gini before vs after taxes and transfers, against under-5 mortality (log scale), 2010s",
     plot = function(d) redistribution_chart(d),
     height = "460px",
     caption = "Preliminary: inequality before taxes and transfers is barely linked to child mortality (r = -0.19; 0.11 at similar income levels). Inequality after them is strongly linked (r = 0.60; 0.52 at similar income). Countries where taxes and transfers remove more inequality have fewer child deaths, even at similar income (r = -0.40). TODO"
   ),
   list(
-    id = "2", title = "Q2: TODO (write the finding as a headline)",
-    chart = "Fig 2: TODO (which graph, which variables)",
-    caption = "TODO: 2-3 sentences."
+    id = "2", title = "Countries whose governments spend more are less unequal",
+    stat = "r = \u22120.33 at similar income",
+    chart = "Scatter: government expense (% of GDP) vs Gini (SWIID), 2010s",
+    x = "gov_expense", y = "swiid_gini",
+    plot = function(d, toggle) spending_inequality_chart(d, education = toggle),
+    toggle = "Show education spending instead",
+    caption = "Preliminary: where government spending is a bigger share of the economy, inequality is lower (r = -0.49, 143 countries; -0.33 at similar income levels). Education spending alone shows almost no link (r = -0.17; -0.06 at similar income). TODO"
   ),
   list(
     id = "3", title = "Q3: TODO (write the finding as a headline)",

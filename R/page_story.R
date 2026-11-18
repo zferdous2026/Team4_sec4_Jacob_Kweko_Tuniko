@@ -27,6 +27,8 @@
 #            country dropdown. Keep these rare.
 #   height   (optional) chart height, default "420px"
 #   exclude  (optional) iso3c codes to leave out of d, e.g. financial hubs
+#   stat     (optional) the key number, shown as a badge next to the title,
+#            e.g. "r = -0.50 at similar income". Keep it under ~35 characters.
 #
 # ## Your chart: plot = function(d) { ... }
 # Write the chart in your notebook first, then paste the ggplot code into the
@@ -65,8 +67,13 @@ figure_card <- function(ns, fig) {
 
   card(
     class = "mb-4",
-    card_header(tags$span(class = "text-muted me-2", paste0("Figure ", fig$id)),
-                tags$b(fig$title)),
+    # Header: "Figure 1  Title" on the left, the key-number badge on the right
+    card_header(
+      class = "d-flex justify-content-between align-items-center gap-3",
+      div(tags$span(class = "text-muted me-2", paste0("Figure ", fig$id)),
+          tags$b(fig$title)),
+      if (!is.null(fig$stat)) tags$span(class = "figure-stat", fig$stat)
+    ),
     if (!is.null(fig$control)) fig$control(ns),
     if (!is.null(fig$plot)) {
       # height = "auto": the chart sets its own height (see story_server)
@@ -74,7 +81,7 @@ figure_card <- function(ns, fig) {
     } else {
       placeholder(fig$chart, height)
     },
-    p(class = "mt-3 mb-1", fig$caption),
+    p(class = "figure-caption mt-3 mb-1", fig$caption),
     div(
       class = "d-flex justify-content-between align-items-center",
       if (!is.null(fig$toggle)) checkboxInput(ns(paste0("toggle_", fig$id)), fig$toggle) else span(),
@@ -87,10 +94,11 @@ story_page <- function(id, title, subquestion, takeaway, figures, next_label = N
   ns <- NS(id)
 
   div(
-    class = "container-lg py-3", style = "max-width: 960px;",
+    class = "story-page container-lg py-4", style = "max-width: 960px;",
     h2(title),
     p(class = "lead", subquestion),
-    div(class = "alert alert-primary", tags$b("Takeaway: "), takeaway),
+    # The takeaway as a pull-quote (styled by .takeaway in app.R's theme)
+    div(class = "takeaway", tags$span(class = "takeaway-label", "Takeaway"), takeaway),
     lapply(figures, function(fig) figure_card(ns, fig)),
     if (!is.null(next_label)) next_button(ns, next_label)
   )
@@ -130,7 +138,8 @@ story_server <- function(id, figures, parent_session, next_page = NULL) {
               layout(legend = list(orientation = "h", x = 0, y = -0.18)) %>%
               config(displayModeBar = FALSE)
           }
-          chart
+          # Same font inside every chart as on the page (chart_font, helpers.R)
+          chart %>% layout(font = chart_font)
         })
       })
     }

@@ -111,6 +111,7 @@ development_path_chart <- function() {
 wealth_figures <- list(
   list(
     id = "1", title = "Richer countries live much longer",
+    stat = "r = 0.87 \u00b7 213 countries",
     chart = "Scatter: GDP per capita (log scale) vs life expectancy, 2010s, with a curved trend",
     x = "gdp_per_capita", y = "life_expect",
     plot = function(d) preston_chart(d),
@@ -118,6 +119,7 @@ wealth_figures <- list(
   ),
   list(
     id = "2", title = "Since 1960, countries have grown richer and longer-lived",
+    stat = "1960\u20132024 \u00b7 press play",
     chart = "Animated bubbles: GDP per capita vs life expectancy, 1960-2024, bubble size = population",
     plot = function(d) development_path_chart(),
     height = "560px",

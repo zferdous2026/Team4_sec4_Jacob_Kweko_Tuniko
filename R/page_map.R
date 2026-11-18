@@ -141,6 +141,7 @@ map_chart <- function(values, var, source) {
                  projection = list(type = "natural earth")),
       margin = list(l = 0, r = 0, t = 0, b = 0)
     ) %>%
+    layout(font = chart_font) %>%
     config(displayModeBar = FALSE) %>%
     event_register("plotly_click")
 }
@@ -185,6 +186,7 @@ profile_chart <- function(var, iso, compare_iso) {
                         type = if (isTRUE(row$log_scale)) "log" else "linear"),
            legend = list(orientation = "h", x = 0, y = 1.15),
            margin = list(t = 10)) %>%
+    layout(font = chart_font) %>%
     config(displayModeBar = FALSE)
 }
 
@@ -252,9 +254,12 @@ mapServer <- function(id) {
       map_chart(v, input$var, source_id)
     })
 
-    # Clicking a country selects it in the "Country profile" dropdown
-    observeEvent(event_data("plotly_click", source = source_id), {
-      clicked <- event_data("plotly_click", source = source_id)$customdata[[1]]
+    # Clicking a country selects it in the "Country profile" dropdown.
+    # suppressWarnings: this starts listening before the map has been drawn,
+    # and plotly warns (harmlessly) that the click event isn't registered yet.
+    map_click <- reactive(suppressWarnings(event_data("plotly_click", source = source_id)))
+    observeEvent(map_click(), {
+      clicked <- map_click()$customdata[[1]]
       if (!is.null(clicked)) updateSelectInput(session, "country", selected = clicked)
     })
 

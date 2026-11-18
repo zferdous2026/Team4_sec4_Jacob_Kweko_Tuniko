@@ -40,6 +40,11 @@ indicator_choices <- function(variables = info$variable) {
   split(setNames(rows$variable, rows$label), rows$theme)
 }
 
+# Font used inside every plotly chart, matching the site's text font (Inter,
+# set in app.R's theme). Use it with  %>% layout(font = chart_font)
+chart_font <- list(family = "Inter, -apple-system, 'Segoe UI', sans-serif",
+                   color = "#2b2d31")
+
 # Colour-by options shown in dropdowns: label -> column name
 colour_options <- c("Income group" = "income", "Continent" = "continent")
 

@@ -24,6 +24,9 @@
 #
 # Working example: R/page_inequality.R (Jacob's figure).
 #
+# Figures 2 and 3 are Jacob's (HealthEqualityVSHapiness2.Rmd and
+# DemocracyVsCorruption.Rmd), rebuilt on 2010s averages.
+#
 # ## Data
 #   data/country_period.rds (2010s averages). V-Dem variables: democracy,
 #   health_equality, educ_equality, corruption.
@@ -83,23 +86,101 @@ learning_chart <- function(d) {
     theme(panel.grid.minor = element_blank(), strip.text = element_text(face = "bold"))
 }
 
+# Figure 2: health equality vs child mortality (Jacob's) ------------------------
+# From HealthEqualityVSHapiness2.Rmd (which is about under-5 mortality, despite
+# the name). Countries are split into thirds by health equality (V-Dem); under-5
+# mortality is shown as a box plot per third, one dot per country.
+# by_income = TRUE: one panel per income group (the figure's toggle).
+health_mortality_chart <- function(d, by_income = FALSE) {
+  colours <- c("Lower" = "#86b6ef", "Middle" = "#3987e5", "Higher" = "#0d366b")
+
+  d <- d %>%
+    filter(!is.na(health_equality), !is.na(under5_mort), !is.na(income)) %>%
+    mutate(
+      # ntile(x, 3): 1 = lowest third of countries, 3 = highest third
+      health_group = factor(ntile(health_equality, 3), levels = 1:3, labels = names(colours)),
+      tip = paste0("<b>", country, "</b>",
+                   "<br>", income,
+                   "<br>Health equality: ", round(health_equality, 2),
+                   "<br>Under-5 mortality: ", round(under5_mort, 1), " per 1,000")
+    )
+
+  p <- ggplot(d, aes(x = health_group, y = under5_mort, fill = health_group)) +
+    geom_boxplot(alpha = 0.65, outlier.shape = NA) +
+    suppressWarnings(geom_point(aes(text = tip),
+                                position = position_jitter(width = 0.15, height = 0, seed = 1),
+                                alpha = 0.65, size = 2)) +
+    scale_fill_manual(values = colours) +
+    # Log scale: the thirds differ more than tenfold (about 60 vs 5 deaths)
+    scale_y_log10() +
+    labs(x = "Health equality (thirds of countries: lower, middle, higher)",
+         y = "Under-5 mortality per 1,000 (log scale)") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none", panel.grid.minor = element_blank())
+
+  if (by_income) p <- p + facet_wrap(~ income, ncol = 2)
+  p
+}
+
+# Figure 3: democracy vs corruption (Jacob's) -----------------------------------
+# From DemocracyVsCorruption.Rmd. A CURVED trend (loess), not a straight line:
+# partly democratic countries are the most corrupt, and only full democracies
+# are clean. Colour on the points only, so there is one trend line, not one
+# per region.
+democracy_corruption_chart <- function(d) {
+  colours <- c("East Asia & Pacific" = "#2a78d6", "Europe & Central Asia" = "#eda100",
+               "Latin America & Caribbean" = "#eb6834",
+               "Middle East, North Africa, Afghanistan & Pakistan" = "#8a63d2",
+               "North America" = "#52514e", "South Asia" = "#1baf7a",
+               "Sub-Saharan Africa" = "#e87ba4")
+
+  d <- d %>%
+    filter(!is.na(democracy), !is.na(corruption), !is.na(region)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", region,
+                        "<br>Democracy: ", round(democracy, 2),
+                        "<br>Corruption: ", round(corruption, 2)))
+
+  ggplot(d, aes(x = democracy, y = corruption)) +
+    geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = region, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = colours, name = NULL) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+    labs(x = "Electoral democracy (V-Dem, 0 = low, 1 = high)",
+         y = "Political corruption (V-Dem, 0 = clean, 1 = corrupt)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+}
+
 institutions_figures <- list(
   list(
     id = "1", title = "Equal access to schooling goes with better learning; spending doesn't",
+    stat = "r = 0.44 at similar income",
     chart = "Three scatters: test scores vs education spending, secondary enrollment and educational equality, 2010s",
     plot = function(d) learning_chart(d),
     height = "440px",
     caption = "Preliminary: at similar income levels, countries where schooling is shared more equally score higher on international tests (r = 0.44, 149 countries). Enrollment matters less (0.22), and education spending hardly at all (0.06). TODO"
   ),
   list(
-    id = "2", title = "Q2: TODO (write the finding as a headline)",
-    chart = "Fig 2: TODO (which graph, which variables)",
-    caption = "TODO: 2-3 sentences."
+    id = "2", title = "Where healthcare reaches everyone, far fewer children die",
+    stat = "r = \u22120.50 at similar income",
+    chart = "Box plot: under-5 mortality by thirds of health equality, 2010s",
+    x = "health_equality", y = "under5_mort",
+    plot = function(d, toggle) health_mortality_chart(d, by_income = toggle),
+    toggle = "Compare within income groups",
+    height = "520px",
+    caption = "Preliminary: in the third of countries with the most equal healthcare, a median of 4.8 children per 1,000 die before age five, against 61.7 in the least equal third (r = -0.84, 174 countries). The link holds at similar income levels (r = -0.50), the strongest of any explanation in this project. TODO"
   ),
   list(
-    id = "3", title = "Q3: TODO (write the finding as a headline)",
-    chart = "Fig 3: TODO (which graph, which variables)",
-    caption = "TODO: 2-3 sentences."
+    id = "3", title = "Only full democracies are clean; partial democracies are the most corrupt",
+    stat = "r = \u22120.53 at similar income",
+    chart = "Scatter: democracy vs corruption (V-Dem), 2010s, with a curved trend",
+    x = "democracy", y = "corruption",
+    plot = function(d) democracy_corruption_chart(d),
+    height = "460px",
+    caption = "Preliminary: more democratic countries are less corrupt (r = -0.68, 175 countries; -0.53 at similar income levels), but not steadily. Countries that are only partly democratic (democracy 0.2-0.4) are the most corrupt of all (median 0.81); corruption falls sharply only among full democracies (median 0.05). TODO"
   )
 )
 

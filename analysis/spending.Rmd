@@ -95,19 +95,48 @@ redistribution_chart(d)
 
 **Caption:** Preliminary: inequality before taxes and transfers is barely linked to child mortality (r = -0.19; 0.11 at similar income levels). Inequality after them is strongly linked (r = 0.60; 0.52 at similar income). Countries where taxes and transfers remove more inequality have fewer child deaths, even at similar income (r = -0.40). TODO
 
-## Q2: TODO (your question)
+## Q2: Are countries whose governments spend more less unequal?
 
-**Variables:** TODO
+Jacob's question (`PublicSpendingVsIncomeInequality.Rmd`). The chart code is the same as `spending_inequality_chart()` in `R/page_spending.R`; **if you change the chart, change it in both places.** Uses 2010s averages: in 2022 alone only 72 countries have both values, against 143 here.
 
-```{r q2}
-# Example (replace with your own variables):
-# summarise_question(d, "gini_index", "infant_mort")
-# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+**Variables:** `gov_expense` (or `edc_spending`, % of GDP) and `swiid_gini`, 2010s averages.
+
+```{r q2-chart}
+spending_inequality_chart <- function(d, education = FALSE) {
+  colours <- c("Low income" = "#86b6ef", "Lower middle income" = "#3987e5",
+               "Upper middle income" = "#1c5cab", "High income" = "#0d366b")
+  x_var   <- if (education) "edc_spending" else "gov_expense"
+  x_label <- if (education) "Education spending (% of GDP)" else "Government expense (% of GDP)"
+
+  d <- d %>%
+    filter(!is.na(.data[[x_var]]), !is.na(swiid_gini), !is.na(income)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", income,
+                        "<br>", x_label, ": ", round(.data[[x_var]], 1),
+                        "<br>Gini (SWIID): ", round(swiid_gini, 1)))
+
+  ggplot(d, aes(x = .data[[x_var]], y = swiid_gini)) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = income, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = colours, name = NULL) +
+    labs(x = x_label, y = "Gini index (SWIID, after taxes and transfers)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+}
 ```
 
-**Title:** TODO (the finding in one sentence)
+```{r q2}
+summarise_question(d, "gov_expense", "swiid_gini")[1:2]
+summarise_question(d, "edc_spending", "swiid_gini")[1:2]
+spending_inequality_chart(d)
+spending_inequality_chart(d, education = TRUE)
+```
 
-**Caption:** TODO
+**Title:** Countries whose governments spend more are less unequal
+
+**Caption:** Preliminary: where government spending is a bigger share of the economy, inequality is lower (r = -0.49, 143 countries; -0.33 at similar income levels). Education spending alone shows almost no link (r = -0.17; -0.06 at similar income). TODO
 
 ## Q3: TODO (your question)
 
