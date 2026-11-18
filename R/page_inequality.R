@@ -73,6 +73,7 @@ gini_chart <- function(d, split = FALSE) {
 inequality_figures <- list(
   list(
     id = "1", title = "More unequal countries have higher infant mortality",
+    stat = "r = 0.50 at similar income",
     chart = "Scatter: Gini index (SWIID) vs infant mortality (log scale), 2010s",
     x = "swiid_gini", y = "infant_mort",
     plot = function(d) gini_chart(d),
@@ -80,6 +81,7 @@ inequality_figures <- list(
   ),
   list(
     id = "2", title = "The link is strongest among richer countries",
+    stat = "High income: r = 0.66",
     chart = "Scatter split by income group",
     x = "swiid_gini", y = "infant_mort",
     plot = function(d) gini_chart(d, split = TRUE),

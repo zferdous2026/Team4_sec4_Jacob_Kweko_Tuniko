@@ -19,8 +19,8 @@ Shiny runs every `.R` file in this folder (alphabetically) before `app.R`. Each 
 | `page_expectations.R` | Beating Expectations | TBD | Figures + preliminary captions |
 | `page_forecast.R` | Forecast & Models | TBD | Figures defined; models in `analysis/forecast.Rmd` |
 | `page_conclusion.R` | Conclusion | TBD | Layout done, do last |
-| `page_explorer.R` | Explore · Explorer | App lead | Controls done, chart TODO |
-| `page_map.R` | Explore · World Map | TBD | Controls done, map TODO |
+| `page_explorer.R` | Explore · Explorer | App lead | Done: any two indicators, decade, highlight a country, r and r at similar income |
+| `page_map.R` | Explore · World Map | TBD | Map + country profile done (from Jacob's map); more modes TODO |
 | `page_about.R` | About | TBD | Text done, charts TODO |
 
 ## A story page = a list of figures

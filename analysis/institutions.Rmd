@@ -37,44 +37,185 @@ This is where you work out the questions for the **6. Institutions** page (`R/pa
 
 Add, remove or rename the Q sections freely.
 
-## Q1: TODO (your question)
+## Q1: What goes with learning: spending, enrollment or equal access?
 
-**Variables:** TODO
+The chart code is the same as `learning_chart()` in `R/page_institutions.R`; **if you change the chart, change it in both places.**
 
-```{r q1}
-# Example (replace with your own variables):
-# summarise_question(d, "gini_index", "infant_mort")
-# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+**Variables:** `test_scores` (harmonized test scores, 300-625) against `edc_spending` (% of GDP), `gross_sec_enrol` (%) and `educ_equality` (V-Dem), 2010s averages.
+
+```{r q1-chart}
+# Figure 1: what goes with learning? -------------------------------------------
+# Test scores against three possible explanations, one panel each. The panel
+# title gives the correlation once income is taken into account, which is
+# where the three differ most.
+# d: 2010s data, one row per country (given by the template).
+
+# Correlation between x and y after removing what GDP per capita explains in
+# each (ranks, as in analysis/_setup.R's beyond())
+r_beyond_income <- function(x, y, gdp) {
+  ok <- !is.na(x) & !is.na(y) & !is.na(gdp)
+  rx <- resid(lm(rank(x[ok]) ~ rank(gdp[ok])))
+  ry <- resid(lm(rank(y[ok]) ~ rank(gdp[ok])))
+  cor(rx, ry)
+}
+
+learning_chart <- function(d) {
+  colours <- c("Low income" = "#86b6ef", "Lower middle income" = "#3987e5",
+               "Upper middle income" = "#1c5cab", "High income" = "#0d366b")
+  explanations <- c(edc_spending    = "Education spending (% of GDP)",
+                    gross_sec_enrol = "Secondary enrollment (%)",
+                    educ_equality   = "Educational equality (V-Dem)")
+
+  # Panel titles with the "beyond income" correlation, e.g.
+  # "Educational equality (V-Dem): r = 0.44 at similar income"
+  panel_titles <- sapply(names(explanations), function(v) {
+    r <- r_beyond_income(d[[v]], d$test_scores, d$gdp_per_capita)
+    paste0(explanations[[v]], "\nr = ", sprintf("%.2f", r), " at similar income")
+  })
+
+  d <- d %>%
+    filter(!is.na(test_scores), !is.na(income)) %>%
+    tidyr::pivot_longer(all_of(names(explanations)), names_to = "measure", values_to = "value") %>%
+    filter(!is.na(value)) %>%
+    mutate(
+      tip = paste0("<b>", country, "</b>",
+                   "<br>", income,
+                   "<br>", explanations[measure], ": ", round(value, 2),
+                   "<br>Test score: ", round(test_scores)),
+      measure = factor(measure, levels = names(explanations), labels = panel_titles)
+    )
+
+  ggplot(d, aes(x = value, y = test_scores)) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = income, text = tip),
+                                size = 1.8, alpha = 0.8)) +
+    # free_x: each explanation keeps its own x scale
+    facet_wrap(~ measure, scales = "free_x") +
+    scale_colour_manual(values = colours, name = NULL) +
+    labs(x = NULL, y = "Harmonized test score (300-625)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank(), strip.text = element_text(face = "bold"))
+}
 ```
 
-**Title:** TODO (the finding in one sentence)
-
-**Caption:** TODO
-
-## Q2: TODO (your question)
-
-**Variables:** TODO
-
-```{r q2}
-# Example (replace with your own variables):
-# summarise_question(d, "gini_index", "infant_mort")
-# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+```{r q1, fig.width = 10}
+summarise_question(d, "edc_spending", "test_scores")[1:2]
+summarise_question(d, "gross_sec_enrol", "test_scores")[1:2]
+summarise_question(d, "educ_equality", "test_scores")[1:2]
+learning_chart(d)
 ```
 
-**Title:** TODO (the finding in one sentence)
+**Title:** Equal access to schooling goes with better learning; spending doesn't
 
-**Caption:** TODO
+**Caption:** Preliminary: at similar income levels, countries where schooling is shared more equally score higher on international tests (r = 0.44, 149 countries). Enrollment matters less (0.22), and education spending hardly at all (0.06). TODO
 
-## Q3: TODO (your question)
+## Q2: Where healthcare reaches everyone, do fewer children die?
 
-**Variables:** TODO
+Jacob's question (`HealthEqualityVSHapiness2.Rmd`, which is about child mortality despite the name). The chart code is the same as `health_mortality_chart()` in `R/page_institutions.R`; **if you change the chart, change it in both places.**
+
+**Variables:** `health_equality` (V-Dem) and `under5_mort` (World Bank, log scale), 2010s averages.
+
+```{r q2-chart}
+health_mortality_chart <- function(d, by_income = FALSE) {
+  colours <- c("Lower" = "#86b6ef", "Middle" = "#3987e5", "Higher" = "#0d366b")
+
+  d <- d %>%
+    filter(!is.na(health_equality), !is.na(under5_mort), !is.na(income)) %>%
+    mutate(
+      # ntile(x, 3): 1 = lowest third of countries, 3 = highest third
+      health_group = factor(ntile(health_equality, 3), levels = 1:3, labels = names(colours)),
+      tip = paste0("<b>", country, "</b>",
+                   "<br>", income,
+                   "<br>Health equality: ", round(health_equality, 2),
+                   "<br>Under-5 mortality: ", round(under5_mort, 1), " per 1,000")
+    )
+
+  p <- ggplot(d, aes(x = health_group, y = under5_mort, fill = health_group)) +
+    geom_boxplot(alpha = 0.65, outlier.shape = NA) +
+    suppressWarnings(geom_point(aes(text = tip),
+                                position = position_jitter(width = 0.15, height = 0, seed = 1),
+                                alpha = 0.65, size = 2)) +
+    scale_fill_manual(values = colours) +
+    # Log scale: the thirds differ more than tenfold (about 60 vs 5 deaths)
+    scale_y_log10() +
+    labs(x = "Health equality (thirds of countries: lower, middle, higher)",
+         y = "Under-5 mortality per 1,000 (log scale)") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none", panel.grid.minor = element_blank())
+
+  if (by_income) p <- p + facet_wrap(~ income, ncol = 2)
+  p
+}
+```
+
+```{r q2, fig.height = 7}
+summarise_question(d, "health_equality", "under5_mort")
+
+# Child mortality in each third of countries (Jacob's summary)
+d %>%
+  filter(!is.na(health_equality), !is.na(under5_mort)) %>%
+  mutate(health_group = ntile(health_equality, 3)) %>%
+  group_by(health_group) %>%
+  summarise(countries = n(), median_under5 = median(under5_mort),
+            high_income = sum(income == "High income"))
+
+health_mortality_chart(d)
+health_mortality_chart(d, by_income = TRUE)
+```
+
+**Title:** Where healthcare reaches everyone, far fewer children die
+
+**Caption:** Preliminary: in the third of countries with the most equal healthcare, a median of 4.8 children per 1,000 die before age five, against 61.7 in the least equal third (r = -0.84, 174 countries). The link holds at similar income levels (r = -0.50), the strongest of any explanation in this project. TODO
+
+## Q3: Are democracies less corrupt?
+
+Jacob's question (`DemocracyVsCorruption.Rmd`). The chart code is the same as `democracy_corruption_chart()` in `R/page_institutions.R`; **if you change the chart, change it in both places.**
+
+**Variables:** `democracy` and `corruption` (both V-Dem, 0-1), 2010s averages.
+
+```{r q3-chart}
+democracy_corruption_chart <- function(d) {
+  colours <- c("East Asia & Pacific" = "#2a78d6", "Europe & Central Asia" = "#eda100",
+               "Latin America & Caribbean" = "#eb6834",
+               "Middle East, North Africa, Afghanistan & Pakistan" = "#8a63d2",
+               "North America" = "#52514e", "South Asia" = "#1baf7a",
+               "Sub-Saharan Africa" = "#e87ba4")
+
+  d <- d %>%
+    filter(!is.na(democracy), !is.na(corruption), !is.na(region)) %>%
+    mutate(tip = paste0("<b>", country, "</b>",
+                        "<br>", region,
+                        "<br>Democracy: ", round(democracy, 2),
+                        "<br>Corruption: ", round(corruption, 2)))
+
+  ggplot(d, aes(x = democracy, y = corruption)) +
+    geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
+                colour = "#52514e", linewidth = 0.8) +
+    suppressWarnings(geom_point(aes(colour = region, text = tip),
+                                size = 2.3, alpha = 0.85)) +
+    scale_colour_manual(values = colours, name = NULL) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+    labs(x = "Electoral democracy (V-Dem, 0 = low, 1 = high)",
+         y = "Political corruption (V-Dem, 0 = clean, 1 = corrupt)") +
+    theme_minimal(base_size = 12) +
+    theme(panel.grid.minor = element_blank())
+}
+```
 
 ```{r q3}
-# Example (replace with your own variables):
-# summarise_question(d, "gini_index", "infant_mort")
-# quick_scatter(d, "gini_index", "infant_mort", log_y = TRUE)
+summarise_question(d, "democracy", "corruption")
+
+# The curve: median corruption by democracy band
+d %>%
+  filter(!is.na(democracy), !is.na(corruption)) %>%
+  mutate(band = cut(democracy, c(0, 0.2, 0.4, 0.6, 0.8, 1), include.lowest = TRUE)) %>%
+  group_by(band) %>%
+  summarise(countries = n(), median_corruption = median(corruption))
+
+democracy_corruption_chart(d)
 ```
 
-**Title:** TODO (the finding in one sentence)
+**Title:** Only full democracies are clean; partial democracies are the most corrupt
 
-**Caption:** TODO
+**Caption:** Preliminary: more democratic countries are less corrupt (r = -0.68, 175 countries; -0.53 at similar income levels), but not steadily. Countries that are only partly democratic (democracy 0.2-0.4) are the most corrupt of all (median 0.81); corruption falls sharply only among full democracies (median 0.05). TODO
