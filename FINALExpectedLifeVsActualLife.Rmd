@@ -1,0 +1,870 @@
+---
+title: "Untitled"
+author: "Jacob De Fonseka"
+date: "2026-11-18"
+output: html_document
+---
+
+```{r}
+
+# ============================================================
+# DATA 101 CAPSTONE: BEATING EXPECTATIONS
+# Actual vs. Expected Life Expectancy
+# Interactive Dumbbell Chart - Shiny + Plotly
+#
+# Model: Life expectancy ~ log(GDP per capita)
+# Performance = Actual - Expected (in years)
+# ============================================================
+
+# PART 1: PACKAGES
+
+library(shiny)
+library(tidyverse)
+library(plotly)
+
+
+# PART 2: LOAD DATA
+
+files <- list.files(
+  ".",
+  pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(files) == 0) {
+  files <- list.files(
+    "~",
+    pattern = "^wdi_clean(\\([0-9]+\\))?\\.csv$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+}
+
+if (length(files) == 0) {
+  stop("Cannot find wdi_clean.csv in your RStudio folders.")
+}
+
+preferred <- files[
+  basename(files) == "wdi_clean.csv"
+]
+
+data_path <- if (length(preferred) > 0) {
+  preferred[1]
+} else {
+  files[1]
+}
+
+data <- read_csv(data_path, show_col_types = FALSE)
+
+required <- c(
+  "country", "iso3c", "region", "year",
+  "gdp_per_capita", "life_expect"
+)
+
+missing <- setdiff(required, names(data))
+
+if (length(missing) > 0) {
+  stop(
+    paste("Missing columns:", paste(missing, collapse = ", "))
+  )
+}
+
+
+# PART 3: CLEAN DATA
+
+graph_data <- data %>%
+  transmute(
+    country = as.character(country),
+    iso3c = as.character(iso3c),
+    region = as.character(region),
+    year = as.integer(year),
+    gdp_per_capita = as.numeric(gdp_per_capita),
+    life_expect = as.numeric(life_expect)
+  ) %>%
+  filter(
+    !is.na(country),
+    !is.na(iso3c),
+    !is.na(region),
+    !is.na(year),
+    is.finite(gdp_per_capita),
+    is.finite(life_expect),
+    gdp_per_capita > 0,
+    life_expect > 0,
+    life_expect <= 110
+  ) %>%
+  distinct(iso3c, year, .keep_all = TRUE)
+
+if (nrow(graph_data) == 0) {
+  stop("No valid GDP and life expectancy observations found.")
+}
+
+
+# PART 4: DEFAULT SETTINGS
+
+available_years <- sort(unique(graph_data$year))
+
+default_year <- if (2022 %in% available_years) {
+  2022
+} else {
+  max(available_years)
+}
+
+all_regions <- sort(unique(graph_data$region))
+all_countries <- sort(unique(graph_data$country))
+
+
+# PART 5: USER INTERFACE
+
+ui <- fluidPage(
+
+  titlePanel("Beating Expectations: Who Lives Longer Than Income Predicts?"),
+
+  p(
+    "Compare actual life expectancy with the life expectancy
+     predicted from each country's GDP per capita."
+  ),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      sliderInput(
+        "year",
+        "Select Year:",
+        min = min(available_years),
+        max = max(available_years),
+        value = default_year,
+        step = 1,
+        sep = ""
+      ),
+
+      selectInput(
+        "ranking",
+        "Which Countries Should Be Displayed?",
+        choices = c(
+          "Top Overperformers" = "top",
+          "Bottom Underperformers" = "bottom",
+          "Top and Bottom" = "both",
+          "Selected Countries" = "selected"
+        ),
+        selected = "both"
+      ),
+
+      sliderInput(
+        "n_countries",
+        "Number of Countries per Group:",
+        min = 5,
+        max = 20,
+        value = 10,
+        step = 1
+      ),
+
+      selectInput(
+        "region",
+        "Filter by Region:",
+        choices = c("All Regions", all_regions),
+        selected = "All Regions"
+      ),
+
+      selectizeInput(
+        "countries",
+        "Select or Highlight Countries:",
+        choices = all_countries,
+        selected = character(0),
+        multiple = TRUE,
+        options = list(
+          placeholder = "Search for countries"
+        )
+      ),
+
+      checkboxInput(
+        "highlight_us",
+        "Highlight United States",
+        value = TRUE
+      ),
+
+      checkboxInput(
+        "show_labels",
+        "Show Performance Labels",
+        value = TRUE
+      ),
+
+      checkboxInput(
+        "show_us",
+        "Include U.S. Even If Outside Rankings",
+        value = TRUE
+      ),
+
+      actionButton(
+        "reset",
+        "Reset Filters"
+      ),
+
+      hr(),
+
+      h4("How to Read This Graph"),
+
+      tags$ul(
+        tags$li(
+          strong("Gray dot: "),
+          "Expected life expectancy based on GDP per capita."
+        ),
+        tags$li(
+          strong("Blue dot: "),
+          "Actual life expectancy above expectations."
+        ),
+        tags$li(
+          strong("Red dot: "),
+          "Actual life expectancy below expectations."
+        ),
+        tags$li(
+          strong("Connecting line: "),
+          "The difference between actual and expected."
+        ),
+        tags$li(
+          strong("Positive score: "),
+          "Country lives longer than predicted."
+        ),
+        tags$li(
+          strong("Negative score: "),
+          "Country lives fewer years than predicted."
+        )
+      ),
+
+      hr(),
+
+      h4("Model Information"),
+
+      p(
+        "Expected life expectancy is calculated using
+         a linear regression of life expectancy on
+         the natural logarithm of GDP per capita."
+      ),
+
+      p(
+        "The model is fitted using all countries
+         with valid data in the selected year.
+         Region filters change which countries are
+         displayed, not the prediction model."
+      ),
+
+      p(
+        "Sources: World Bank GDP per capita
+         and life expectancy."
+      )
+    ),
+
+    mainPanel(
+
+      plotlyOutput(
+        "dumbbell_plot",
+        height = "850px"
+      ),
+
+      h4("Summary Statistics"),
+
+      fluidRow(
+        column(
+          4,
+          strong(textOutput("country_count"))
+        ),
+        column(
+          4,
+          strong(textOutput("model_r2"))
+        ),
+        column(
+          4,
+          strong(textOutput("us_result"))
+        )
+      ),
+
+      hr(),
+
+      h4("Country Performance Table"),
+
+      tableOutput("performance_table"),
+
+      hr(),
+
+      h4("Interpretation"),
+
+      textOutput("interpretation"),
+
+      br(),
+
+      p(
+        "Note: The model identifies statistical
+         overperformance and underperformance.
+         It does not establish what causes the differences."
+      )
+    )
+  )
+)
+
+
+# ============================================================
+# PART 6: SERVER
+# ============================================================
+
+server <- function(input, output, session) {
+
+  # 6A: FIT A NEW MODEL FOR EACH YEAR
+
+  model_data <- reactive({
+
+    df <- graph_data %>%
+      filter(year == input$year)
+
+    validate(
+      need(
+        nrow(df) >= 10,
+        "Not enough country observations for this year."
+      ),
+      need(
+        n_distinct(df$gdp_per_capita) >= 3,
+        "Not enough income variation for a regression."
+      )
+    )
+
+    # Predict life expectancy from log income
+
+    model <- lm(
+      life_expect ~ log(gdp_per_capita),
+      data = df
+    )
+
+    df <- df %>%
+      mutate(
+        expected_life = as.numeric(
+          predict(model, newdata = df)
+        ),
+
+        performance = life_expect - expected_life,
+
+        performance_type = if_else(
+          performance >= 0,
+          "Above Expectations",
+          "Below Expectations"
+        )
+      )
+
+    list(
+      data = df,
+      model = model
+    )
+  })
+
+
+  # 6B: FILTER REGIONS
+
+  region_data <- reactive({
+
+    df <- model_data()$data
+
+    if (input$region != "All Regions") {
+      df <- df %>%
+        filter(region == input$region)
+    }
+
+    df
+  })
+
+
+  # 6C: CHOOSE COUNTRIES TO DISPLAY
+
+  displayed_data <- reactive({
+
+    df <- region_data()
+
+    if (input$ranking == "top") {
+
+      selected <- df %>%
+        slice_max(
+          performance,
+          n = input$n_countries,
+          with_ties = FALSE
+        )
+
+    } else if (input$ranking == "bottom") {
+
+      selected <- df %>%
+        slice_min(
+          performance,
+          n = input$n_countries,
+          with_ties = FALSE
+        )
+
+    } else if (input$ranking == "both") {
+
+      top <- df %>%
+        slice_max(
+          performance,
+          n = input$n_countries,
+          with_ties = FALSE
+        )
+
+      bottom <- df %>%
+        slice_min(
+          performance,
+          n = input$n_countries,
+          with_ties = FALSE
+        )
+
+      selected <- bind_rows(top, bottom) %>%
+        distinct(iso3c, .keep_all = TRUE)
+
+    } else {
+
+      selected <- df %>%
+        filter(country %in% input$countries)
+    }
+
+    # Always include selected countries for comparison
+
+    if (
+      length(input$countries) > 0 &&
+      input$ranking != "selected"
+    ) {
+
+      extra <- df %>%
+        filter(country %in% input$countries)
+
+      selected <- bind_rows(selected, extra) %>%
+        distinct(iso3c, .keep_all = TRUE)
+    }
+
+    # Include the U.S. when requested,
+    # provided it is in the selected region.
+
+    if (
+      input$show_us &&
+      input$ranking != "selected"
+    ) {
+
+      us <- df %>%
+        filter(iso3c == "USA")
+
+      selected <- bind_rows(selected, us) %>%
+        distinct(iso3c, .keep_all = TRUE)
+    }
+
+    selected %>%
+      arrange(performance) %>%
+      mutate(
+        country_order = factor(
+          country,
+          levels = unique(country)
+        )
+      )
+  })
+
+
+  # ==========================================================
+  # PART 7: INTERACTIVE DUMBBELL CHART
+  # ==========================================================
+
+  output$dumbbell_plot <- renderPlotly({
+
+    df <- displayed_data()
+
+    validate(
+      need(
+        nrow(df) > 0,
+        "No countries available. Change your selection."
+      )
+    )
+
+    # Calculate vertical positions
+
+    df <- df %>%
+      mutate(
+        y_position = seq_len(n()),
+
+        is_us = iso3c == "USA",
+
+        actual_color = case_when(
+          is_us & input$highlight_us ~ "#7C3AED",
+          performance >= 0 ~ "#1686C1",
+          TRUE ~ "#D85A57"
+        ),
+
+        Hover = paste0(
+          "<b>", country, "</b>",
+          "<br>Year: ", year,
+          "<br>Region: ", region,
+          "<br>GDP per capita: $",
+          format(
+            round(gdp_per_capita, 0),
+            big.mark = ","
+          ),
+          "<br>Expected life expectancy: ",
+          round(expected_life, 2), " years",
+          "<br>Actual life expectancy: ",
+          round(life_expect, 2), " years",
+          "<br>Performance: ",
+          sprintf("%+.2f", performance),
+          " years"
+        )
+      )
+
+    p <- plot_ly()
+
+    # Connecting lines for each country
+
+    for (i in seq_len(nrow(df))) {
+
+      p <- p %>%
+        add_segments(
+          x = df$expected_life[i],
+          xend = df$life_expect[i],
+          y = df$y_position[i],
+          yend = df$y_position[i],
+
+          line = list(
+            color = if (
+              df$is_us[i] && input$highlight_us
+            ) {
+              "#7C3AED"
+            } else {
+              "#A1A1AA"
+            },
+            width = if (
+              df$is_us[i] && input$highlight_us
+            ) 5 else 3
+          ),
+
+          inherit = FALSE,
+          hoverinfo = "skip",
+          showlegend = FALSE
+        )
+    }
+
+    # Expected dots
+
+    p <- p %>%
+      add_markers(
+        x = df$expected_life,
+        y = df$y_position,
+
+        text = paste0(
+          df$country,
+          "<br>Expected: ",
+          round(df$expected_life, 2),
+          " years"
+        ),
+
+        hoverinfo = "text",
+
+        marker = list(
+          color = "#94A3B8",
+          size = 10,
+          line = list(
+            color = "white",
+            width = 1
+          )
+        ),
+
+        name = "Expected",
+        showlegend = TRUE,
+        inherit = FALSE
+      )
+
+    # Actual dots, colored by performance
+
+    p <- p %>%
+      add_markers(
+        x = df$life_expect,
+        y = df$y_position,
+
+        text = df$Hover,
+        hoverinfo = "text",
+
+        marker = list(
+          color = df$actual_color,
+          size = ifelse(
+            df$is_us & input$highlight_us,
+            15,
+            11
+          ),
+          line = list(
+            color = "white",
+            width = 1
+          )
+        ),
+
+        name = "Actual",
+        showlegend = TRUE,
+        inherit = FALSE
+      )
+
+    # Optional performance labels
+
+    if (input$show_labels) {
+
+      df <- df %>%
+        mutate(
+          label_x = pmax(
+            life_expect,
+            expected_life
+          ) + 0.7,
+
+          score_label = sprintf(
+            "%+.1f",
+            performance
+          )
+        )
+
+      p <- p %>%
+        add_text(
+          x = df$label_x,
+          y = df$y_position,
+
+          text = df$score_label,
+          textposition = "middle right",
+
+          textfont = list(
+            size = 11,
+            color = "#333333"
+          ),
+
+          hoverinfo = "skip",
+          showlegend = FALSE,
+          inherit = FALSE
+        )
+    }
+
+    # Automatic X-axis limits
+
+    x_min <- floor(
+      min(
+        c(df$expected_life, df$life_expect),
+        na.rm = TRUE
+      ) - 3
+    )
+
+    x_max <- ceiling(
+      max(
+        c(df$expected_life, df$life_expect),
+        na.rm = TRUE
+      ) + 5
+    )
+
+    # Final chart
+
+    p %>%
+      layout(
+
+        title = list(
+          text = paste0(
+            "Actual vs. Expected Life Expectancy (",
+            input$year,
+            ")"
+          )
+        ),
+
+        xaxis = list(
+          title = "Life Expectancy (Years)",
+          range = c(x_min, x_max),
+          zeroline = FALSE
+        ),
+
+        yaxis = list(
+          title = "",
+          tickmode = "array",
+          tickvals = df$y_position,
+          ticktext = df$country,
+          range = c(0.5, nrow(df) + 0.5),
+          autorange = FALSE,
+          automargin = TRUE
+        ),
+
+        legend = list(
+          orientation = "h",
+          x = 0.3,
+          y = -0.12
+        ),
+
+        hovermode = "closest",
+
+        margin = list(
+          t = 90,
+          b = 100,
+          l = 170,
+          r = 65
+        )
+      )
+  })
+
+
+  # ==========================================================
+  # PART 8: SUMMARY STATISTICS
+  # ==========================================================
+
+  output$country_count <- renderText({
+
+    paste(
+      "Model countries:",
+      nrow(model_data()$data)
+    )
+  })
+
+
+  output$model_r2 <- renderText({
+
+    r2 <- summary(model_data()$model)$r.squared
+
+    paste0(
+      "Model R-squared: ",
+      round(r2, 3)
+    )
+  })
+
+
+  output$us_result <- renderText({
+
+    us <- model_data()$data %>%
+      filter(iso3c == "USA")
+
+    if (nrow(us) == 0) {
+      return("U.S. data unavailable")
+    }
+
+    paste0(
+      "U.S. performance: ",
+      sprintf("%+.2f", us$performance[1]),
+      " years"
+    )
+  })
+
+
+  # ==========================================================
+  # PART 9: COUNTRY PERFORMANCE TABLE
+  # ==========================================================
+
+  output$performance_table <- renderTable({
+
+    df <- displayed_data()
+
+    if (nrow(df) == 0) {
+      return(NULL)
+    }
+
+    df %>%
+      arrange(desc(performance)) %>%
+      transmute(
+        Country = country,
+        Region = region,
+        `GDP per Capita` = round(gdp_per_capita, 0),
+        `Expected Life` = round(expected_life, 2),
+        `Actual Life` = round(life_expect, 2),
+        `Difference (Years)` = round(performance, 2)
+      )
+
+  }, striped = TRUE, bordered = TRUE)
+
+
+  # ==========================================================
+  # PART 10: AUTOMATIC INTERPRETATION
+  # ==========================================================
+
+  output$interpretation <- renderText({
+
+    df <- displayed_data()
+
+    if (nrow(df) == 0) {
+      return("No countries selected.")
+    }
+
+    top_country <- df %>%
+      slice_max(performance, n = 1)
+
+    bottom_country <- df %>%
+      slice_min(performance, n = 1)
+
+    paste0(
+      "Among the displayed countries in ",
+      input$year,
+      ", ",
+      top_country$country,
+      " has the largest positive performance score (",
+      sprintf("%+.2f", top_country$performance),
+      " years), while ",
+      bottom_country$country,
+      " has the lowest score (",
+      sprintf("%+.2f", bottom_country$performance),
+      " years). ",
+      "These differences are measured relative to the ",
+      "global income-based prediction model for that year."
+    )
+  })
+
+
+  # ==========================================================
+  # PART 11: RESET FILTERS
+  # ==========================================================
+
+  observeEvent(input$reset, {
+
+    updateSliderInput(
+      session,
+      "year",
+      value = default_year
+    )
+
+    updateSelectInput(
+      session,
+      "ranking",
+      selected = "both"
+    )
+
+    updateSliderInput(
+      session,
+      "n_countries",
+      value = 10
+    )
+
+    updateSelectInput(
+      session,
+      "region",
+      selected = "All Regions"
+    )
+
+    updateSelectizeInput(
+      session,
+      "countries",
+      selected = character(0)
+    )
+
+    updateCheckboxInput(
+      session,
+      "highlight_us",
+      value = TRUE
+    )
+
+    updateCheckboxInput(
+      session,
+      "show_labels",
+      value = TRUE
+    )
+
+    updateCheckboxInput(
+      session,
+      "show_us",
+      value = TRUE
+    )
+  })
+}
+
+
+# ============================================================
+# PART 12: RUN SHINY APP
+# ============================================================
+
+shinyApp(
+  ui = ui,
+  server = server
+)
+
+```
+
